@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+zk list --quiet --format="{{title}}\t{{path}}" --sort title

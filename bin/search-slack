@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ $# -eq 0 ]; then
+  echo "Usage: search-slack <query> [limit]" >&2
+  exit 1
+fi
+
+query="$1"
+limit="${2:-50}"
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+slackdump search messages -y -o "$tmpdir/out.zip" "$query" >/dev/null 2>&1
+
+db="$tmpdir/out/slackdump.sqlite"
+if [ ! -f "$db" ]; then
+  echo "No results found." >&2
+  exit 0
+fi
+
+sqlite3 -separator '	' "$db" \
+  "SELECT CHANNEL_NAME, datetime(CAST(SUBSTR(TS, 1, INSTR(TS,'.')-1) AS INTEGER), 'unixepoch', 'localtime'), TXT
+   FROM SEARCH_MESSAGE ORDER BY TS DESC LIMIT $limit;"

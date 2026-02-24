@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# shellcheck source=lib.sh
+SELF="$0"
+[ -L "$SELF" ] && SELF="$(readlink "$SELF")"
+source "$(dirname "$SELF")/lib.sh"
+
+GUI=false
+args=()
+for arg in "$@"; do
+  case "$arg" in
+    --gui|-g) GUI=true ;;
+    *) args+=("$arg") ;;
+  esac
+done
+set -- "${args[@]+${args[@]}}"
+
+export JK_HOME
+export ZK_NOTEBOOK_DIR="$(pwd)"
+
+case "${1:-}" in
+  init)
+    command -v zk >/dev/null || { echo "zk not found. brew install zk"; exit 1; }
+    [ -d .zk ] || zk init --no-input .
+    cp "$JK_HOME/scaffold/config.toml" .zk/config.toml
+    cp "$JK_HOME/scaffold/templates/"* .zk/templates/
+    [ -f CLAUDE.md ] || cp "$JK_HOME/scaffold/CLAUDE.md" ./CLAUDE.md
+    [ -f motd.md ]   || cp "$JK_HOME/scaffold/motd.md" ./motd.md
+    mkdir -p ai
+    echo "Initialized jk notebook in $(pwd)"
+    ;;
+  *)
+    # Dispatch to bin/<command> if it exists
+    if [[ -n "${1:-}" && -x "$JK_HOME/bin/$1" ]]; then
+      cmd="$1"; shift
+      exec "$JK_HOME/bin/$cmd" "$@"
+    fi
+    # Default: open nvim
+    if $GUI; then
+      command -v neovide >/dev/null || { echo "neovide not found. See https://neovide.dev"; exit 1; }
+      NVIM_APPNAME=jk exec neovide --frame buttonless --title-hidden "$@"
+    else
+      NVIM_APPNAME=jk exec nvim "$@"
+    fi
+    ;;
+esac

@@ -1,0 +1,6 @@
+.claude/settings.local.json
+.serena
+demo/.zk
+demo/.claude/settings.local.json
+ts/node_modules
+rs/target

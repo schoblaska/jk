@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SELF="$0"
+[ -L "$SELF" ] && SELF="$(readlink "$SELF")"
+BIN="$(dirname "$SELF")"
+
+exec "$BIN/../rs/target/release/jk-tools" search "$@"

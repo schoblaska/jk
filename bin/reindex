@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SELF="$0"
+[ -L "$SELF" ] && SELF="$(readlink "$SELF")"
+BIN="$(dirname "$SELF")"
+
+# 1. Rebuild zk index (LSP, backlinks, etc.)
+zk index --quiet
+
+# 2. Regenerate index.md with section headings
+zk gen-index
+
+# 3. Update semantic embeddings
+if [[ $# -eq 0 ]]; then
+  "$BIN/embed"
+else
+  "$BIN/embed" "$@"
+fi

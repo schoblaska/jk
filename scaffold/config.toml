@@ -1,0 +1,82 @@
+# zk configuration file
+
+# NOTE SETTINGS
+[note]
+
+# Template used to generate a note's content.
+# If not an absolute path or "~/unix/path", it's relative to .zk/templates/
+template = "default.md"
+
+# Directories to exclude from the notebook index.
+ignore = [".claude/", ".submodules/"]
+
+# EXTRA VARIABLES
+[extra]
+
+# GROUP OVERRIDES
+[group.journal]
+[group.journal.note]
+filename = "{{format-date now '%Y-%m-%d'}}"
+template = "journal.md"
+
+# MARKDOWN SETTINGS
+[format.markdown]
+
+# Enable support for #hashtags.
+hashtags = true
+colon-tags = false
+multiword-tags = false
+
+# EXTERNAL TOOLS
+[tool]
+
+# LSP
+[lsp]
+
+[lsp.diagnostics]
+# Warn for dead links between notes.
+dead-link = "error"
+
+[lsp.completion]
+
+# NAMED FILTERS
+[filter]
+
+# COMMAND ALIASES
+[alias]
+
+# Regenerate index.md with journal entries (by filename) and notes (by title).
+gen-index = '''
+  idx="$ZK_NOTEBOOK_DIR/index.md"
+  list_with_sections() {
+    while IFS=$'\t' read -r title path; do
+      echo "- [$title](${path%.md})"
+      grep -n '^## ' "$ZK_NOTEBOOK_DIR/$path" 2>/dev/null | while IFS=: read -r line heading; do
+        heading="${heading#\#\# }"
+        echo "  - $heading (L$line)"
+      done
+    done
+  }
+  {
+    echo "# Index"
+    echo ""
+    echo "## Journal"
+    echo ""
+    zk list --quiet --format="{{path}}" --sort path --exclude index.md | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.md$' | while read -r p; do
+      title=$(head -1 "$ZK_NOTEBOOK_DIR/$p" | sed 's/^# //')
+      echo "- [$title](${p%.md})"
+      grep -n '^## ' "$ZK_NOTEBOOK_DIR/$p" 2>/dev/null | while IFS=: read -r line heading; do
+        heading="${heading#\#\# }"
+        echo "  - $heading (L$line)"
+      done
+    done
+    echo ""
+    echo "## Notes"
+    echo ""
+    zk list --quiet --format="{{title}}\t{{path}}" --sort title --exclude index.md | grep -vE $'\t'"[0-9]{4}-[0-9]{2}-[0-9]{2}\.md$" | grep -v $'\t'"ai/" | list_with_sections
+    echo ""
+    echo "## AI Notes"
+    echo ""
+    zk list --quiet --format="{{title}}\t{{path}}" --sort title ai/ 2>/dev/null | list_with_sections
+  } > "$idx"
+'''

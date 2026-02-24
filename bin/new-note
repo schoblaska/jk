@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+title="${*:-Untitled}"
+notebook="${ZK_NOTEBOOK_DIR:-.}"
+ai_dir="$notebook/ai"
+mkdir -p "$ai_dir"
+
+# Generate unique 4-char hex filename
+while true; do
+  id=$(openssl rand -hex 2)
+  [ ! -f "$ai_dir/$id.md" ] && break
+done
+
+# Date formatting
+dow=$(date +%a)
+pretty=$(date "+$dow, %b %d %Y")
+iso=$(date +%Y-%m-%d)
+
+printf 'ai/%s.md\n---\n# %s\ndate: [%s](../%s)\ndescription:\ntags: #ai-generated\n' \
+  "$id" "$title" "$pretty" "$iso"
