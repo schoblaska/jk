@@ -66,6 +66,7 @@
 ## Prerequisites
 
 - [Neovim](https://neovim.io/) >= 0.9
+- [Rust](https://rustup.rs/) (for building semantic search tools)
 - [zk](https://github.com/zk-org/zk): `brew install zk`
 - [Ollama](https://ollama.com/) with `nomic-embed-text` for semantic search (optional)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) for the terminal split (optional)
@@ -83,7 +84,6 @@ ln -sf ~/.config/jk/bin/jk ~/.local/bin/jk
 ```bash
 cd demo
 jk init
-jk reindex
 jk --gui
 ```
 

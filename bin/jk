@@ -28,6 +28,25 @@ case "${1:-}" in
     [ -f CLAUDE.md ] || cp "$JK_HOME/scaffold/CLAUDE.md" ./CLAUDE.md
     [ -f motd.md ]   || cp "$JK_HOME/scaffold/motd.md" ./motd.md
     mkdir -p ai
+    # Build Rust tools if not already built
+    if [ ! -f "$JK_HOME/rs/target/release/jk-tools" ]; then
+      printf "Semantic search tools not installed. Build now? [Y/n] "
+      read -r answer
+      if [[ "${answer:-Y}" =~ ^[Yy]$ ]]; then
+        command -v cargo >/dev/null || { echo "cargo not found. Install Rust: https://rustup.rs"; exit 1; }
+        echo "Building jk-tools..."
+        cargo build --release --manifest-path "$JK_HOME/rs/Cargo.toml"
+      else
+        echo "Skipped. Run 'cargo build --release' in $JK_HOME/rs to build later."
+      fi
+    fi
+    # Index notes
+    zk index --quiet
+    if [ -f "$JK_HOME/rs/target/release/jk-tools" ]; then
+      "$JK_HOME/bin/reindex"
+    else
+      echo "Skipping semantic indexing (jk-tools not built)."
+    fi
     echo "Initialized jk notebook in $(pwd)"
     ;;
   *)
