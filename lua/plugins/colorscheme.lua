@@ -65,6 +65,7 @@ return {
             AerialInterfaceIcon = { link = "@markup.heading" },
             AerialInterface = { link = "@markup.heading" },
             AerialLine = { link = "DiffChange" },
+            ["@markup.italic.markdown_inline"] = { link = "@constructor" },
             IncSearch = { link = "@comment.warning" },
             Search = { link = "DiffChange" },
             HlSearchNear = { link = "@comment.warning" },
