@@ -7,7 +7,7 @@ return {
       require("nightfox").setup({
         options = {
           styles = {
-            comments = "italic",
+            comments = "NONE",
           },
         },
         palettes = {
@@ -24,7 +24,7 @@ return {
             TabLineFill = { bg = "bg0" },
             ["@markup.link.label"] = { fg = "palette.pink" },
             ["@markup.link.url"] = { fg = "palette.comment" },
-            ZkTag = { fg = "palette.pink", style = "italic" },
+            ZkTag = { fg = "palette.pink" },
             NormalFloat = { bg = "bg0" },
             FloatBorder = { bg = "bg0", fg = "bg0" },
             SnacksNotifierHistory = { bg = "bg0" },

@@ -94,6 +94,15 @@ vim.api.nvim_create_autocmd("ColorScheme", {
     vim.api.nvim_set_hl(0, "SpellCap", {})
     vim.api.nvim_set_hl(0, "SpellRare", {})
     vim.api.nvim_set_hl(0, "SpellLocal", {})
+
+    -- Strip italic from every highlight group
+    for _, name in ipairs(vim.fn.getcompletion("", "highlight")) do
+      local hl = vim.api.nvim_get_hl(0, { name = name })
+      if hl.italic then
+        hl.italic = false
+        vim.api.nvim_set_hl(0, name, hl)
+      end
+    end
   end,
 })
 
