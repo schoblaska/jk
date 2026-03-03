@@ -21,6 +21,8 @@ return {
       ["<S-Tab>"] = { "fallback" },
       ["<C-n>"] = { "select_next", "fallback" },
       ["<C-p>"] = { "select_prev", "fallback" },
+      ["<Down>"] = { "select_next", "fallback" },
+      ["<Up>"] = { "select_prev", "fallback" },
       ["<C-y>"] = { "accept", "fallback" },
       ["<C-e>"] = { "cancel", "fallback" },
     },
