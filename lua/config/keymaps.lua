@@ -1,5 +1,8 @@
 local map = vim.keymap.set
 
+-- Jumplist
+map("n", "<C-p>", "<C-i>")
+
 -- Window navigation
 map("n", "<C-h>", "<C-w>h")
 map("n", "<C-j>", "<C-w>j")
