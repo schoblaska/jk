@@ -1,11 +1,3 @@
-local function apply_zk_tag_match(winid)
-  winid = winid or 0
-  for _, m in ipairs(vim.fn.getmatches(winid)) do
-    if m.group == "ZkTag" then return end
-  end
-  vim.fn.matchadd("ZkTag", "\\#[[:alnum:]][[:alnum:]_-]*", 10, -1, { window = winid })
-end
-
 local function hover()
   local entry = require("jk.zk_status").note_at_cursor()
   if not entry then
@@ -52,7 +44,6 @@ local function hover()
     style = "minimal",
     focusable = false,
   })
-  apply_zk_tag_match(win)
   if scroll_to > 0 then
     vim.api.nvim_buf_add_highlight(buf, -1, "TelescopePreviewLine", scroll_to, 0, -1)
     vim.api.nvim_win_set_cursor(win, { scroll_to + 1, 0 })
@@ -68,7 +59,4 @@ local function hover()
   })
 end
 
-return {
-  hover = hover,
-  apply_zk_tag_match = apply_zk_tag_match,
-}
+return { hover = hover }

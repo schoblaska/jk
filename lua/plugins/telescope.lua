@@ -56,14 +56,7 @@ return {
       callback = function()
         vim.wo.wrap = true
         vim.wo.linebreak = true
-        -- ZkTag highlight for preview windows (matchadd is window-local)
-        local ok, matches = pcall(vim.fn.getmatches)
-        if ok then
-          for _, m in ipairs(matches) do
-            if m.group == "ZkTag" then return end
-          end
-          vim.fn.matchadd("ZkTag", "\\#[[:alnum:]][[:alnum:]_-]*")
-        end
+        vim.fn.matchadd("ZkTag", "\\#[[:alnum:]][[:alnum:]_-]*")
       end,
     })
   end,

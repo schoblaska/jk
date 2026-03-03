@@ -36,10 +36,25 @@ return {
       },
     })
 
-    vim.api.nvim_create_autocmd({ "WinEnter", "BufWinEnter", "FileType" }, {
-      callback = function()
-        if vim.bo.filetype ~= "markdown" then return end
-        require("jk.preview").apply_zk_tag_match()
+    local ns = vim.api.nvim_create_namespace("zk_tags")
+    vim.api.nvim_set_decoration_provider(ns, {
+      on_win = function(_, _, bufnr)
+        if vim.bo[bufnr].filetype ~= "markdown" then return false end
+      end,
+      on_line = function(_, _, bufnr, row)
+        local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
+        if not line then return end
+        local col = 1
+        while col <= #line do
+          local start, finish = line:find("#[%w][%w_%-]*", col)
+          if not start then break end
+          vim.api.nvim_buf_set_extmark(bufnr, ns, row, start - 1, {
+            end_col = finish,
+            hl_group = "ZkTag",
+            ephemeral = true,
+          })
+          col = finish + 1
+        end
       end,
     })
 
