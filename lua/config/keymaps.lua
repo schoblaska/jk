@@ -1,7 +1,11 @@
 local map = vim.keymap.set
 
--- Jumplist
-map("n", "<C-p>", "<C-i>")
+-- Jumplist (silent! suppresses stale mark errors)
+map("n", "<C-o>", function() vim.cmd([[silent! exe "normal! \<C-o>"]]) end)
+map("n", "<C-p>", function()
+  local key = vim.api.nvim_replace_termcodes("<C-i>", true, false, true)
+  vim.api.nvim_feedkeys(key, "nx", false)
+end)
 
 -- Window navigation
 map("n", "<C-h>", "<C-w>h")
