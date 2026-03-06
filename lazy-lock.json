@@ -16,6 +16,7 @@
   "snacks.nvim": { "branch": "main", "commit": "fe7cfe9800a182274d0f868a74b7263b8c0c020b" },
   "telescope-fzf-native.nvim": { "branch": "main", "commit": "6fea601bd2b694c6f2ae08a6c6fab14930c60e2c" },
   "telescope.nvim": { "branch": "master", "commit": "5255aa27c422de944791318024167ad5d40aad20" },
+  "toggle-checkbox.nvim": { "branch": "main", "commit": "58f958a2dcfb974963d4bb772ad8c3d8a1c62774" },
   "vim-pencil": { "branch": "master", "commit": "6d70438a8886eaf933c38a7a43a61adb0a7815ed" },
   "which-key.nvim": { "branch": "main", "commit": "3aab2147e74890957785941f0c1ad87d0a44c15a" },
   "zk-nvim": { "branch": "main", "commit": "51c8f858420112dda495a6f4ddbd3943ae433e39" }

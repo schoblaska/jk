@@ -61,6 +61,7 @@
 - `]]` / `[[` - next / prev journal entry
 - `<space>a` - toggle agent sidebar
 - `<space>A` - new agent session
+- `<space>x` - toggle task checkbox
 - `<space>y` - yank to clipboard
 
 ## Prerequisites
