@@ -1,4 +1,4 @@
-`jk` is a Neovim config for taking notes with [zk](https://github.com/zk-org/zk) that packages a [zk LSP](https://github.com/zk-org/zk-nvim) with local semantic search and [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) pickers for Markdown headers and tags.
+`jk` is my Neovim + Rust CLI for Markdown notes. It uses a [zk](https://github.com/zk-org/zk) [LSP](https://github.com/zk-org/zk-nvim) server to manage links, supports local embeddings for RAG and live semantic search, and includes an MCP server so that agents can interface with your notebook.
 
 <div align="center">
   <img src="https://gist.githubusercontent.com/schoblaska/c252e3e7dee25e64b2be2cf589dc59fc/raw/f52b787af9e4cfd6127fa7c88f34425b30b427bd/Screenshot%25202026-03-01%2520at%252010.10.08%25E2%2580%25AFAM.png#gh-light-mode-only" >
