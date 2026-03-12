@@ -4,40 +4,28 @@ use crate::ollama;
 
 const TOP_N: usize = 20;
 
-struct ScoredRow {
-    sim: f64,
-    file: String,
-    line: i64,
-    heading: String,
-    title: String,
+pub struct ScoredRow {
+    pub sim: f64,
+    pub file: String,
+    pub line: i64,
+    pub heading: String,
+    pub title: String,
 }
 
-/// Run semantic search: embed query, score all chunks, print top 20 as TSV.
-pub fn run(notebook_dir: &str, query: &str) {
+/// Semantic search: embed query, score all chunks, return sorted results.
+pub fn search(notebook_dir: &str, query: &str) -> Result<Vec<ScoredRow>, String> {
     if query.is_empty() {
-        return;
+        return Ok(vec![]);
     }
 
-    let embeddings = match ollama::embed(&[query]) {
-        Some(e) => e,
-        None => {
-            eprintln!("Embedding failed");
-            std::process::exit(1);
-        }
-    };
+    let embeddings = ollama::embed(&[query]).ok_or("Embedding failed")?;
     let qv = &embeddings[0];
 
-    let conn = match open_db(notebook_dir) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("DB error: {e}");
-            std::process::exit(1);
-        }
-    };
+    let conn = open_db(notebook_dir).map_err(|e| format!("DB error: {e}"))?;
 
     let mut stmt = conn
         .prepare("SELECT file, heading, line, title, embedding FROM chunks WHERE embedding IS NOT NULL")
-        .unwrap();
+        .map_err(|e| format!("Query error: {e}"))?;
 
     let mut scored: Vec<ScoredRow> = stmt
         .query_map([], |row| {
@@ -48,7 +36,7 @@ pub fn run(notebook_dir: &str, query: &str) {
             let emb_json: String = row.get(4)?;
             Ok((file, heading_raw, line, title, emb_json))
         })
-        .unwrap()
+        .map_err(|e| format!("Query error: {e}"))?
         .filter_map(|r| r.ok())
         .filter_map(|(file, heading_raw, line, title, emb_json)| {
             let emb: Vec<f64> = serde_json::from_str(&emb_json).ok()?;
@@ -66,11 +54,24 @@ pub fn run(notebook_dir: &str, query: &str) {
 
     scored.sort_by(|a, b| b.sim.partial_cmp(&a.sim).unwrap_or(std::cmp::Ordering::Equal));
 
-    for row in scored.iter().take(TOP_N) {
-        println!(
-            "{:.3}\t{}\t{}\t{}\t{}",
-            row.sim, row.file, row.line, row.heading, row.title
-        );
+    Ok(scored)
+}
+
+/// Run semantic search and print top 20 as TSV.
+pub fn run(notebook_dir: &str, query: &str) {
+    match search(notebook_dir, query) {
+        Ok(scored) => {
+            for row in scored.iter().take(TOP_N) {
+                println!(
+                    "{:.3}\t{}\t{}\t{}\t{}",
+                    row.sim, row.file, row.line, row.heading, row.title
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
     }
 }
 

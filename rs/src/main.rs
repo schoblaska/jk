@@ -4,6 +4,7 @@ mod cosine;
 mod db;
 mod embed;
 mod files;
+mod mcp;
 mod ollama;
 mod search;
 
@@ -22,6 +23,14 @@ fn main() {
         "search" => {
             let query = args[2..].join(" ");
             search::run(&notebook_dir, &query);
+        }
+        "mcp" => {
+            if args.len() < 3 {
+                eprintln!("Usage: jk-tools mcp <notebook-dir>");
+                std::process::exit(1);
+            }
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(mcp::run(&args[2]));
         }
         "embed" => {
             if args.len() > 2 {
@@ -42,6 +51,7 @@ fn usage() {
         "Usage: jk-tools <command> [args...]\n\n\
          Commands:\n  \
          embed [files...]     Full reindex (no args) or incremental (with files)\n  \
-         search <query>       Semantic search, outputs TSV"
+         search <query>       Semantic search, outputs TSV\n  \
+         mcp <notebook-dir>   Start MCP server (stdio)"
     );
 }

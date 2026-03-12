@@ -11,6 +11,9 @@ ureq = { version = "3", features = ["json"] }
 basic-toml = "0.1"
 walkdir = "2"
 rayon = "1"
+rmcp = { version = "0.1", features = ["server", "transport-io", "macros"] }
+tokio = { version = "1", features = ["full"] }
+schemars = "1"
 
 [profile.release]
 opt-level = 3

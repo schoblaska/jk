@@ -99,3 +99,41 @@ ollama pull nomic-embed-text
 Notes are re-indexed automatically on save. The first `<leader>s` search may take a moment if the index hasn't been built yet.
 
 Embeddings are stored in `.zk/search.db`.
+
+## MCP server
+
+The MCP server lets AI agents search, read, and create notes in your notebook. It exposes six tools:
+
+| Tool | Description |
+|------|-------------|
+| `search_notes` | Semantic search over note embeddings |
+| `list_notes` | List all notes (title + path) |
+| `read_note` | Read a note's contents by path |
+| `grep_notes` | Ripgrep search over note contents |
+| `list_tags` | List all tags |
+| `create_note` | Create a new note in `ai/` |
+
+### Setup
+
+Build the Rust tools (if you haven't already):
+
+```bash
+cd ~/.config/jk/rs && cargo build --release
+```
+
+#### Claude Code
+
+```bash
+claude mcp add jk -- ~/.config/jk/rs/target/release/jk-tools mcp /path/to/your/notebook
+```
+
+You can add multiple notebooks under different names:
+
+```bash
+claude mcp add jk-work -- ~/.config/jk/rs/target/release/jk-tools mcp ~/notes/work
+claude mcp add jk-personal -- ~/.config/jk/rs/target/release/jk-tools mcp ~/notes/personal
+```
+
+#### Other MCP clients
+
+Any MCP client that supports stdio transport can use the server. Run `jk-tools mcp <notebook-dir>` as the server command.
