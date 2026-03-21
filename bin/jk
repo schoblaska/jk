@@ -28,6 +28,13 @@ case "${1:-}" in
     [ -f CLAUDE.md ] || cp "$JK_HOME/scaffold/CLAUDE.md" ./CLAUDE.md
     [ -f motd.md ]   || cp "$JK_HOME/scaffold/motd.md" ./motd.md
     mkdir -p ai
+    # Install git hook for auto-reindex on pull
+    if git rev-parse --git-dir &>/dev/null; then
+      hook_dir="$(git rev-parse --git-dir)/hooks"
+      mkdir -p "$hook_dir"
+      cp "$JK_HOME/scaffold/hooks/post-merge" "$hook_dir/post-merge"
+      chmod +x "$hook_dir/post-merge"
+    fi
     # Build Rust tools if not already built
     if [ ! -f "$JK_HOME/rs/target/release/jk-tools" ]; then
       printf "Semantic search tools not installed. Build now? [Y/n] "

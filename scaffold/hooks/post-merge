@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Reindex notes updated by git pull
+set -euo pipefail
+
+# Get files changed by the merge (diff between ORIG_HEAD and HEAD)
+changed=$(git diff-tree -r --name-only --diff-filter=ACMR ORIG_HEAD HEAD -- '*.md')
+[ -z "$changed" ] && exit 0
+
+# Run zk index + regenerate index.md
+zk index --quiet
+zk gen-index
+
+# Incremental semantic reindex on changed files only
+command -v jk >/dev/null && jk embed $changed
