@@ -26,6 +26,8 @@ case "${1:-}" in
     cp "$JK_HOME/scaffold/config.toml" .zk/config.toml
     cp "$JK_HOME/scaffold/templates/"* .zk/templates/
     [ -f CLAUDE.md ] || cp "$JK_HOME/scaffold/CLAUDE.md" ./CLAUDE.md
+    mkdir -p .claude
+    ln -sf "$JK_HOME/scaffold/.claude/CLAUDE.md" .claude/CLAUDE.md
     [ -f motd.md ]   || cp "$JK_HOME/scaffold/motd.md" ./motd.md
     mkdir -p ai
     # Install git hook for auto-reindex on pull

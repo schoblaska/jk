@@ -42,37 +42,6 @@ tags: #ai-generated, #topic
 - Use standard zk markdown links: `[Title](../sha)` for root notes, `[Title](sha)` for other ai notes
 - Create notes with `jk new-note "Title"` - it prints the path, a `---` separator, then the template content. The file is **not** created on disk - you must Write it yourself (filling in description/tags)
 
-## Commands
-
-```bash
-jk new-note "Title"    # prints path + template (file NOT written - you Write it)
-zk new                 # create a new note in root (human use, interactive)
-zk new --group journal # create today's journal entry (interactive)
-zk list                # list all notes
-jk reindex             # rebuild everything: zk index, index.md, embeddings
-jk reindex path/to.md  # same, but only re-embed specified files
-```
-
-**Important:** After creating or editing any note, run `jk reindex` (or `jk reindex path/to.md` for incremental). This rebuilds the zk index, regenerates `index.md`, and updates semantic embeddings in one step.
-
-## Search
-
-All commands are run via `jk <command>` from the notebook directory.
-
-```bash
-jk search-titles                  # list all notes as title<TAB>path, sorted by title
-jk search-grep "query"            # ripgrep across all notes (vimgrep format)
-jk search-semantic "query"        # cosine similarity search over embeddings (top 20)
-jk search-slack "query" [limit]   # search Slack messages via slackdump (default 50 results)
-```
-
-**When to use which search:**
-- **index.md** - read this first when doing notebook research; it links to every note by title, giving you a full map of what exists
-- **titles** - browse/find a note by name
-- **grep** - find exact text, code snippets, or specific phrases
-- **semantic** - find conceptually related notes even without keyword overlap (requires Ollama running)
-- **slack** - find relevant Slack conversations for additional context (requires `slackdump` CLI)
-
 ## Skills
 
 Skills (`.claude/skills/`) capture repeatable workflows. **Actively create and use them.**
