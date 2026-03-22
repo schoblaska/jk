@@ -62,6 +62,7 @@
 - `<space>a` - toggle agent sidebar
 - `<space>A` - new agent session
 - `<space>x` - toggle task checkbox
+- `<space>X` - TODO picker (unchecked checkboxes across all notes, sorted by recency)
 - `<space>y` - yank to clipboard
 
 ## Prerequisites
@@ -102,16 +103,19 @@ Embeddings are stored in `.zk/search.db`.
 
 ## MCP server
 
-The MCP server lets AI agents search, read, and create notes in your notebook. It exposes six tools:
+The MCP server lets AI agents search, read, and create notes in your notebook. It exposes these tools:
 
 | Tool | Description |
 |------|-------------|
-| `search_notes` | Semantic search over note embeddings |
-| `list_notes` | List all notes (title + path) |
-| `read_note` | Read a note's contents by path |
-| `grep_notes` | Ripgrep search over note contents |
-| `list_tags` | List all tags |
+| `rag_search` | Hybrid search (semantic + fulltext + tag boosting + recency) |
+| `read_note` | Read one or more notes by path |
+| `edit_note` | Overwrite an existing note in `ai/` |
 | `create_note` | Create a new note in `ai/` |
+| `list_notes` | List all notes (title + path) |
+| `list_tags` | List all tags |
+| `reindex` | Rebuild zk index, index.md, and embeddings |
+| `recent_journals` | Get recent journal entries with full content |
+| `append_ai_journal` | Append to today's AI journal (`ai/YYYY-MM-DD.md`) |
 
 ### Setup
 

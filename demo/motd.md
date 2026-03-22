@@ -45,6 +45,7 @@
 - `<space>A` - new agent session
 
 - `<space>x` - toggle task checkbox
+- `<space>X` - TODO picker
 - `<space>y` - yank to clipboard
 
 Delete this file to open the daily journal on launch instead.
