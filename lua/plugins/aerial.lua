@@ -16,6 +16,16 @@ return {
     },
     autojump = true,
     filter_kind = false,
+    get_highlight = function(symbol, is_icon, is_collapsed)
+      if is_icon then
+        local level = math.min(symbol.level or 0, 5)
+        return string.format("AerialLevel%dIcon", level)
+      end
+    end,
+    keymaps = {
+      ["<Up>"] = "actions.up_and_scroll",
+      ["<Down>"] = "actions.down_and_scroll",
+    },
     icons = {
       Interface = "#",
     },
