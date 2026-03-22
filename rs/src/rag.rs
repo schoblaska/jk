@@ -5,14 +5,16 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
-const W_SEMANTIC: f64 = 0.55;
-const W_FTS: f64 = 0.30;
+const W_SEMANTIC: f64 = 0.50;
+const W_FTS: f64 = 0.25;
 const W_TAG: f64 = 0.10;
+const W_LINKS: f64 = 0.10;
 const W_RECENCY: f64 = 0.05;
 
 // Fallback weights when Ollama is unavailable
-const W_FTS_FALLBACK: f64 = 0.85;
+const W_FTS_FALLBACK: f64 = 0.70;
 const W_TAG_FALLBACK: f64 = 0.10;
+const W_LINKS_FALLBACK: f64 = 0.15;
 const W_RECENCY_FALLBACK: f64 = 0.05;
 
 const CANDIDATE_LIMIT: usize = 50;
@@ -212,28 +214,52 @@ fn tag_boost(file_tags: &str, query_tags: &[String]) -> f64 {
     matched as f64 / query_tags.len() as f64
 }
 
+fn load_link_counts(conn: &Connection) -> HashMap<String, f64> {
+    let mut stmt = conn
+        .prepare("SELECT dst, COUNT(*) FROM links GROUP BY dst")
+        .unwrap();
+
+    let counts: Vec<(String, i64)> = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let max_count = counts.iter().map(|(_, c)| *c).max().unwrap_or(1) as f64;
+    let log_max = (1.0 + max_count).ln();
+
+    counts
+        .into_iter()
+        .map(|(path, count)| {
+            let score = (1.0 + count as f64).ln() / log_max;
+            (path, score)
+        })
+        .collect()
+}
+
 fn search_single_query(
     conn: &Connection,
     parsed: &ParsedQuery,
     file_meta: &HashMap<String, FileMeta>,
+    link_counts: &HashMap<String, f64>,
     ollama_available: bool,
 ) -> Vec<RagResult> {
     // Merge candidates from semantic + FTS into one map keyed by chunk id
     let mut candidates: HashMap<i64, ChunkCandidate> = HashMap::new();
 
     // Semantic search
-    let (w_sem, w_fts, w_tag, w_rec) = if ollama_available {
+    let (w_sem, w_fts, w_tag, w_links, w_rec) = if ollama_available {
         if let Some(embeddings) = ollama::embed(&[parsed.text.as_str()]) {
             let sem_results = semantic_search(conn, &embeddings[0]);
             for c in sem_results {
                 candidates.insert(c.id, c);
             }
-            (W_SEMANTIC, W_FTS, W_TAG, W_RECENCY)
+            (W_SEMANTIC, W_FTS, W_TAG, W_LINKS, W_RECENCY)
         } else {
-            (0.0, W_FTS_FALLBACK, W_TAG_FALLBACK, W_RECENCY_FALLBACK)
+            (0.0, W_FTS_FALLBACK, W_TAG_FALLBACK, W_LINKS_FALLBACK, W_RECENCY_FALLBACK)
         }
     } else {
-        (0.0, W_FTS_FALLBACK, W_TAG_FALLBACK, W_RECENCY_FALLBACK)
+        (0.0, W_FTS_FALLBACK, W_TAG_FALLBACK, W_LINKS_FALLBACK, W_RECENCY_FALLBACK)
     };
 
     // FTS search
@@ -298,12 +324,13 @@ fn search_single_query(
             let tb = meta
                 .map(|m| tag_boost(&m.tags, &parsed.tags))
                 .unwrap_or(0.0);
+            let lb = link_counts.get(&c.file).copied().unwrap_or(0.0);
             let rb = meta
                 .map(|m| recency_score(m.date.as_deref(), m.is_journal))
                 .unwrap_or(0.0);
 
             let score =
-                w_sem * c.semantic_score + w_fts * c.fts_score + w_tag * tb + w_rec * rb;
+                w_sem * c.semantic_score + w_fts * c.fts_score + w_tag * tb + w_links * lb + w_rec * rb;
 
             let tags = meta.map(|m| m.tags.clone()).unwrap_or_default();
             let date = meta.and_then(|m| m.date.clone());
@@ -473,6 +500,7 @@ pub fn search(
 
     let conn = open_db(notebook_dir).map_err(|e| format!("DB error: {e}"))?;
     let file_meta = load_file_meta(&conn);
+    let link_counts = load_link_counts(&conn);
 
     // Check Ollama availability with a quick probe
     let ollama_available = ollama::embed(&["test"]).is_some();
@@ -484,7 +512,7 @@ pub fn search(
 
     // Run queries (parallel if multiple)
     let all_results: Vec<Vec<RagResult>> = if parsed_queries.len() == 1 {
-        vec![search_single_query(&conn, &parsed_queries[0], &file_meta, ollama_available)]
+        vec![search_single_query(&conn, &parsed_queries[0], &file_meta, &link_counts, ollama_available)]
     } else {
         // For multi-query, we need separate DB connections per thread
         parsed_queries
@@ -492,7 +520,8 @@ pub fn search(
             .map(|pq| {
                 let conn = open_db(notebook_dir).expect("DB error");
                 let meta = load_file_meta(&conn);
-                search_single_query(&conn, pq, &meta, ollama_available)
+                let lc = load_link_counts(&conn);
+                search_single_query(&conn, pq, &meta, &lc, ollama_available)
             })
             .collect()
     };
