@@ -40,8 +40,7 @@
 - `<space>o` - open note
 - `<space>d` - delete note
 - `<space>r` - show recent notes
-- `<space>f` - search notes (grep)
-- `<space>s` - search notes (semantic)
+- `<space>f` - search notes (blended: text + semantic + tags + links)
 - `<space>t` - filter notes by tag
 - `<space>e` - show current note's outline
 - `<space>l` - show current note's links (normal), insert link (visual)

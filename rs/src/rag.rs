@@ -19,6 +19,7 @@ const W_RECENCY_FALLBACK: f64 = 0.05;
 
 const CANDIDATE_LIMIT: usize = 50;
 const LINK_SCORE_FACTOR: f64 = 0.6;
+const MULTI_QUERY_BONUS: f64 = 0.2;
 
 #[derive(Clone)]
 pub struct RagResult {
@@ -530,23 +531,37 @@ pub fn search(
             .collect()
     };
 
-    // Merge results from all queries: dedup by (file, heading), keep max score
-    let mut merged: HashMap<(String, String), RagResult> = HashMap::new();
+    // Merge results from all queries: keep best score + bonus from other queries
+    let mut merged: HashMap<(String, String), (RagResult, Vec<f64>)> = HashMap::new();
     for results in all_results {
         for r in results {
             let key = (r.file.clone(), r.heading.clone());
+            let score = r.score;
             match merged.entry(key) {
                 std::collections::hash_map::Entry::Occupied(mut e) => {
-                    if r.score > e.get().score {
-                        e.insert(r);
+                    let (best, scores) = e.get_mut();
+                    scores.push(score);
+                    if score > best.score {
+                        best.score = score;
                     }
                 }
                 std::collections::hash_map::Entry::Vacant(e) => {
-                    e.insert(r);
+                    e.insert((r, vec![score]));
                 }
             }
         }
     }
+    // Apply cross-query bonus: best score + 20% of sum of other scores
+    let merged: HashMap<(String, String), RagResult> = merged
+        .into_iter()
+        .map(|(key, (mut r, scores))| {
+            if scores.len() > 1 {
+                let others_sum: f64 = scores.iter().sum::<f64>() - r.score;
+                r.score += MULTI_QUERY_BONUS * others_sum;
+            }
+            (key, r)
+        })
+        .collect();
 
     // Collect all query tags for strict filtering
     let all_query_tags: Vec<String> = parsed_queries

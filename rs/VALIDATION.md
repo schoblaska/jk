@@ -120,3 +120,47 @@ Run each step in order. Report pass/fail for each and include any error output.
 
 ## Summary
 Report a table: step number, pass/fail, and any notes. Flag anything unexpected.
+
+---
+
+
+
+**Step 29: PASS** — AI journal `ai/2026-03-21.md` appears as top result [0.43] for `#ai-journal` query.
+
+---
+
+## Summary
+
+| Step | Test | Result | Notes |
+|------|------|--------|-------|
+| 1 | reindex | PASS | Full reindex completed |
+| 2 | list_notes | PASS | TSV output, 42 notes |
+| 3 | list_tags | PASS | 40 tags with counts |
+| 4 | rag_search — basic | PASS | Scored results with paths, excerpts |
+| 5 | rag_search — tag boost | PASS | `#investigation` notes boosted |
+| 6 | rag_search — multi-query | PASS | Merged results from comma-separated queries |
+| 7 | read_note — single | PASS | Full markdown returned |
+| 8 | read_note — batch | PASS | Two notes separated by `---` |
+| 9 | create_note | PASS | Returned `ai/18d2.md` |
+| 10 | read_note — verify created | PASS | Content + frontmatter correct |
+| 11 | edit_note | PASS | Overwrite succeeded |
+| 12 | read_note — verify edited | PASS | Updated content confirmed |
+| 13 | patch_note — happy path | PASS | "Patched ai/18d2.md" |
+| 14 | read_note — verify patched | PASS | Replacement correct, rest intact |
+| 15 | patch_note — not found | PASS | Error: "old_content not found in the note" |
+| 16 | patch_note — ambiguous | PASS | Error: "old_content appears 2 times" |
+| 17 | patch_note — human note | PASS | Error: "Only notes in ai/ can be edited" |
+| 18 | rag_search — find created | PASS | Validation Test is top result |
+| 19 | edit_note — human note | PASS | Error: "Only notes in ai/ can be edited" |
+| 20 | read_note — bad path | PASS | Error: "No such file or directory", no crash |
+| 21 | recent_journals — user | PASS | 7 user journals, reverse chronological |
+| 22 | recent_journals — limit | PASS | Exactly 2 entries returned |
+| 23 | append_ai_journal — create | PASS | Returned `ai/2026-03-21.md` |
+| 24 | read_note — verify journal | PASS | Frontmatter + `#ai-journal` tag + content |
+| 25 | append_ai_journal — append | PASS | Same path returned |
+| 26 | read_note — verify append | PASS | Both sections present |
+| 27 | recent_journals — AI | PASS | AI journal appears |
+| 28 | recent_journals — all | PASS | User + AI journals interleaved by date |
+| 29 | rag_search — find journal | PASS | AI journal is top result for `#ai-journal` |
+
+**29/29 PASS. All tools functioning correctly, all error cases handled gracefully.**
