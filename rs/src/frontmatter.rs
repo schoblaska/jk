@@ -136,23 +136,35 @@ fn normalize_path(path: &str) -> String {
     parts.join("/")
 }
 
-/// Check if a filename looks like a journal entry (YYYY-MM-DD.md in root).
-pub fn is_journal(rel_path: &str) -> bool {
-    // Must be in root directory (no /)
-    if rel_path.contains('/') {
-        return false;
-    }
-    let name = rel_path.strip_suffix(".md").unwrap_or(rel_path);
+/// Check if a filename stem is a date (YYYY-MM-DD).
+fn is_date_filename(name: &str) -> bool {
     if name.len() != 10 {
         return false;
     }
     let bytes = name.as_bytes();
-    // YYYY-MM-DD
     bytes[4] == b'-'
         && bytes[7] == b'-'
         && bytes[..4].iter().all(|b| b.is_ascii_digit())
         && bytes[5..7].iter().all(|b| b.is_ascii_digit())
         && bytes[8..10].iter().all(|b| b.is_ascii_digit())
+}
+
+/// Check if a path is any journal entry (user or AI).
+/// User journals: `YYYY-MM-DD.md` in root. AI journals: `ai/YYYY-MM-DD.md`.
+pub fn is_journal(rel_path: &str) -> bool {
+    let stem = match rel_path.strip_suffix(".md") {
+        Some(s) => s,
+        None => return false,
+    };
+    match stem.strip_prefix("ai/") {
+        Some(name) => is_date_filename(name),
+        None => !stem.contains('/') && is_date_filename(stem),
+    }
+}
+
+/// Check if a journal path belongs to the user (root-level) vs AI (ai/).
+pub fn is_user_journal(rel_path: &str) -> bool {
+    is_journal(rel_path) && !rel_path.starts_with("ai/")
 }
 
 #[cfg(test)]
@@ -229,12 +241,17 @@ mod tests {
 
     #[test]
     fn journal_detection() {
+        // User journals
         assert!(is_journal("2026-02-23.md"));
         assert!(is_journal("2025-01-01.md"));
-        assert!(!is_journal("ai/2026-02-23.md"));
+        assert!(is_user_journal("2026-02-23.md"));
+        // AI journals
+        assert!(is_journal("ai/2026-02-23.md"));
+        assert!(!is_user_journal("ai/2026-02-23.md"));
+        // Not journals
         assert!(!is_journal("notes.md"));
-        // Note: 2026-13-01.md matches the pattern — no month/day range validation (fine for our use case)
         assert!(!is_journal("abcd-ef-gh.md"));
+        assert!(!is_journal("sub/2026-02-23.md")); // wrong directory
     }
 
     #[test]

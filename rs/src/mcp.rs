@@ -1,4 +1,4 @@
-use crate::{embed, rag};
+use crate::{db, embed, rag};
 use rmcp::{
     ServerHandler, ServiceExt,
     handler::server::tool::Parameters,
@@ -7,6 +7,27 @@ use rmcp::{
     transport::io::stdio,
 };
 use std::path::Path;
+
+struct DateInfo {
+    pretty: String, // "Fri, Mar 21 2026"
+    iso: String,    // "2026-03-21"
+}
+
+fn today() -> Result<DateInfo, String> {
+    let output = std::process::Command::new("date")
+        .arg("+%a\t%b %d %Y\t%Y-%m-%d")
+        .output()
+        .map_err(|e| format!("date: {e}"))?;
+    let s = String::from_utf8_lossy(&output.stdout);
+    let parts: Vec<&str> = s.trim().split('\t').collect();
+    if parts.len() != 3 {
+        return Err("date parse error".into());
+    }
+    Ok(DateInfo {
+        pretty: format!("{}, {}", parts[0], parts[1]),
+        iso: parts[2].to_string(),
+    })
+}
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct RagSearchParams {
@@ -44,6 +65,22 @@ struct EditNoteParams {
     /// Path to the note relative to notebook directory (must be in ai/)
     path: String,
     /// New full content for the note (overwrites existing)
+    content: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RecentJournalsParams {
+    /// Number of recent journal entries to return (default: 10)
+    #[serde(default)]
+    limit: Option<usize>,
+    /// Which journals to return: "user" (default), "ai", or "all"
+    #[serde(default)]
+    source: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct AppendAiJournalParams {
+    /// Markdown content to append to today's AI journal entry
     content: String,
 }
 
@@ -243,6 +280,114 @@ impl JkServer {
         .map_err(|e| e.to_string())?
     }
 
+    #[tool(description = "Get recent journal entries with full content, in reverse chronological order. Set source to \"user\" (default), \"ai\", or \"all\".")]
+    async fn recent_journals(
+        &self,
+        #[tool(aggr)] Parameters(params): Parameters<RecentJournalsParams>,
+    ) -> Result<String, String> {
+        let dir = self.notebook_dir.clone();
+        let limit = params.limit.unwrap_or(10);
+        let source = params.source.as_deref().unwrap_or("user");
+        let source = source.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = db::open_db(&dir).map_err(|e| format!("DB error: {e}"))?;
+
+            // Both user (root/YYYY-MM-DD.md) and AI (ai/YYYY-MM-DD.md) journals
+            // have is_journal=1. Distinguish by path prefix.
+            let sql = match source.as_str() {
+                "ai" => "SELECT path, date FROM files WHERE is_journal = 1 AND path LIKE 'ai/%' ORDER BY date DESC LIMIT ?1",
+                "all" => "SELECT path, date FROM files WHERE is_journal = 1 ORDER BY date DESC LIMIT ?1",
+                _ => "SELECT path, date FROM files WHERE is_journal = 1 AND path NOT LIKE 'ai/%' ORDER BY date DESC LIMIT ?1",
+            };
+
+            let mut stmt = conn.prepare(sql).map_err(|e| format!("Query error: {e}"))?;
+            let entries: Vec<(String, String)> = stmt
+                .query_map([limit as i64], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    ))
+                })
+                .map_err(|e| format!("Query error: {e}"))?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            if entries.is_empty() {
+                return Ok(format!("No {source} journal entries found. Run `reindex` if the notebook has journal files."));
+            }
+
+            let mut out = String::new();
+            for (i, (path, date)) in entries.iter().enumerate() {
+                if i > 0 {
+                    out.push_str("\n---\n\n");
+                }
+                out.push_str(&format!("## {date} ({path})\n\n"));
+                let full = Path::new(&dir).join(path);
+                match std::fs::read_to_string(&full) {
+                    Ok(content) => out.push_str(&content),
+                    Err(e) => out.push_str(&format!("Error reading {path}: {e}\n")),
+                }
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+
+    #[tool(description = "Append content to today's AI journal entry (ai/YYYY-MM-DD.md). Creates the file with frontmatter if it doesn't exist. Use for session logs, observations, research notes.")]
+    async fn append_ai_journal(
+        &self,
+        #[tool(aggr)] Parameters(params): Parameters<AppendAiJournalParams>,
+    ) -> Result<String, String> {
+        let dir = self.notebook_dir.clone();
+        let content = params.content;
+        tokio::task::spawn_blocking(move || {
+            let date = today()?;
+            let ai_dir = Path::new(&dir).join("ai");
+            std::fs::create_dir_all(&ai_dir).map_err(|e| format!("mkdir: {e}"))?;
+
+            let rel = format!("ai/{}.md", date.iso);
+            let abs_path = ai_dir.join(format!("{}.md", date.iso));
+
+            if abs_path.exists() {
+                // Append to existing
+                use std::io::Write;
+                let mut file = std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&abs_path)
+                    .map_err(|e| format!("open: {e}"))?;
+                write!(file, "\n\n{content}").map_err(|e| format!("write: {e}"))?;
+            } else {
+                // Create with frontmatter
+                let note = format!(
+                    "# {}\ndate: [{}](../{})\ntags: #ai-journal\n\n{content}\n",
+                    date.pretty, date.pretty, date.iso,
+                );
+                std::fs::write(&abs_path, &note).map_err(|e| format!("write: {e}"))?;
+
+                // Register with zk
+                let _ = std::process::Command::new("zk")
+                    .args(["index", "--quiet"])
+                    .env("ZK_NOTEBOOK_DIR", &dir)
+                    .current_dir(&dir)
+                    .output();
+                let _ = std::process::Command::new("zk")
+                    .args(["gen-index"])
+                    .env("ZK_NOTEBOOK_DIR", &dir)
+                    .current_dir(&dir)
+                    .output();
+            }
+
+            // Incremental reindex
+            let abs_str = abs_path.to_string_lossy().to_string();
+            embed::incremental_reindex(&dir, &[abs_str]);
+
+            Ok(rel)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+
     tool_box!(JkServer {
         rag_search,
         list_notes,
@@ -251,6 +396,8 @@ impl JkServer {
         list_tags,
         create_note,
         reindex,
+        recent_journals,
+        append_ai_journal,
     });
 
     #[tool(description = "Create a new note in the ai/ directory. Returns the relative path of the created note.")]
@@ -278,18 +425,9 @@ impl JkServer {
                 }
             };
 
-            // Dates
-            let date_output = std::process::Command::new("date")
-                .arg("+%a\t%b %d %Y\t%Y-%m-%d")
-                .output()
-                .map_err(|e| format!("date: {e}"))?;
-            let date_str = String::from_utf8_lossy(&date_output.stdout);
-            let parts: Vec<&str> = date_str.trim().split('\t').collect();
-            if parts.len() != 3 {
-                return Err("date parse error".into());
-            }
-            let pretty = format!("{}, {}", parts[0], parts[1]);
-            let iso = parts[2];
+            let date = today()?;
+            let pretty = &date.pretty;
+            let iso = &date.iso;
 
             // Tags
             let tag_str = match &params.tags {
@@ -350,7 +488,7 @@ impl ServerHandler for JkServer {
                 version: env!("CARGO_PKG_VERSION").into(),
             },
             instructions: Some(
-                "jk notebook tools: rag_search (hybrid semantic+fulltext+tags+recency search), read_note, edit_note, create_note, list_notes, list_tags, reindex".into(),
+                "jk notebook tools: rag_search, read_note, edit_note, create_note, list_notes, list_tags, reindex, recent_journals, append_ai_journal".into(),
             ),
         }
     }

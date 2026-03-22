@@ -41,6 +41,7 @@ tags: #ai-generated, #topic
 - Link *to* human notes when relevant (creates discoverable backlinks without modifying the human note)
 - Use standard zk markdown links: `[Title](../sha)` for root notes, `[Title](sha)` for other ai notes
 - Create notes with the `create_note` MCP tool — it handles file creation, templating, and reindexing automatically
+- Use `append_ai_journal` to keep a running log at `ai/YYYY-MM-DD.md` — session summaries, observations, research progress
 
 ## Skills
 

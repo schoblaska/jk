@@ -39,6 +39,21 @@ List all tags used in the notebook. Use to discover tag names for `rag_search` q
 
 Rebuild the zk index, regenerate `index.md`, and update semantic embeddings. Pass specific file paths for incremental reindex, or omit for full reindex.
 
+## recent_journals
+
+Get recent journal entries with full content, in reverse chronological order.
+
+- **limit** (optional): Number of entries, default 10
+- **source** (optional): `"user"` (default), `"ai"`, or `"all"`
+
+Use `source: "ai"` to review your own prior journal entries for continuity across sessions.
+
+## append_ai_journal
+
+Append content to today's AI journal (`ai/YYYY-MM-DD.md`). Creates the file with frontmatter on first call, appends on subsequent calls. Use for session logs, observations, research notes, and ongoing context that spans a session.
+
+- **content**: Markdown to append (a section, observation, etc.)
+
 ## Search Strategy
 
 1. **index.md** — read first for a full map of all notes by title
