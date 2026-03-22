@@ -360,7 +360,7 @@ impl JkServer {
             } else {
                 // Create with frontmatter
                 let note = format!(
-                    "# {}\ndate: [{}](../{})\ntags: #ai-journal\n\n{content}\n",
+                    "# AI Journal: {}\ndate: [{}](../{})\ntags: #ai-journal\n\n{content}\n",
                     date.pretty, date.pretty, date.iso,
                 );
                 std::fs::write(&abs_path, &note).map_err(|e| format!("write: {e}"))?;
