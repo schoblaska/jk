@@ -13,12 +13,16 @@ return {
           name = "Spell",
           module = "blink-cmp-spell",
           score_offset = -5,
+          should_show_items = function(ctx)
+            return ctx.trigger.initial_kind ~= "trigger_character"
+          end,
         },
       },
     },
     keymap = {
       ["<Tab>"] = { "show", "select_and_accept", "fallback" },
       ["<S-Tab>"] = { "fallback" },
+      ["<CR>"] = { "accept", "fallback" },
       ["<C-n>"] = { "select_next", "fallback" },
       ["<C-p>"] = { "select_prev", "fallback" },
       ["<Down>"] = { "select_next", "fallback" },
