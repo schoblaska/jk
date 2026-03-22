@@ -175,6 +175,7 @@ return {
       vim.notify("Deleted " .. rel, vim.log.levels.INFO)
     end, desc = "Delete note" },
 
+    { "<leader>X", function() require("jk.todos")() end, desc = "TODOs" },
     { "<leader>s", function() require("jk.search").semantic() end, desc = "Semantic search" },
     { "<leader>a", function() require("jk.claude").toggle() end, desc = "Toggle Claude" },
     { "<leader>A", function() require("jk.claude").open() end, desc = "New Claude" },
