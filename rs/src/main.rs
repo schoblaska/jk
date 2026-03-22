@@ -28,9 +28,10 @@ fn main() {
         }
         "rag-search" => {
             let query = args[2..].join(" ");
+            const SCORE_THRESHOLD: f64 = 0.35;
             match rag::search(&notebook_dir, &query, 30, true, true) {
                 Ok((results, _)) => {
-                    for r in &results {
+                    for r in results.iter().take_while(|r| r.score >= SCORE_THRESHOLD) {
                         let linked = r.linked_from.as_deref().unwrap_or("");
                         println!(
                             "{:.3}\t{}\t{}\t{}\t{}\t{}",
