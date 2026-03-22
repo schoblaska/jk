@@ -613,8 +613,13 @@ fn make_excerpt(text: &str) -> String {
     if body.len() <= EXCERPT_CHARS {
         body.to_string()
     } else {
+        // Find a char boundary at or before EXCERPT_CHARS
+        let mut end = EXCERPT_CHARS;
+        while !body.is_char_boundary(end) {
+            end -= 1;
+        }
         // Cut at word boundary
-        let truncated = &body[..EXCERPT_CHARS];
+        let truncated = &body[..end];
         match truncated.rfind(' ') {
             Some(pos) => format!("{}...", &truncated[..pos]),
             None => format!("{truncated}..."),
