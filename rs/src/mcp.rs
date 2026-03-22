@@ -1,4 +1,4 @@
-use crate::{embed, search};
+use crate::{embed, rag};
 use rmcp::{
     ServerHandler, ServiceExt,
     handler::server::tool::Parameters,
@@ -9,24 +9,22 @@ use rmcp::{
 use std::path::Path;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-struct SearchParams {
-    /// Search query for semantic search over note embeddings
+struct RagSearchParams {
+    /// Search query. Use #tag tokens for tag boosting (e.g. "puglia #travel").
+    /// Comma-separated queries run in parallel (e.g. "italian cooking, wine regions").
     query: String,
-    /// Maximum number of results to return (default: 20)
+    /// Maximum results to return (default: 15)
     #[serde(default)]
     limit: Option<usize>,
+    /// Include one-hop linked notes in results (default: true)
+    #[serde(default)]
+    expand_links: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ReadNoteParams {
-    /// Path to the note, relative to the notebook directory (e.g. "ai/a1b2.md")
-    path: String,
-}
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-struct GrepParams {
-    /// Regex pattern to search for in note contents
-    pattern: String,
+    /// One or more note paths relative to the notebook directory (e.g. ["ai/a1b2.md", "travel/c3d4.md"])
+    paths: Vec<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -41,6 +39,21 @@ struct CreateNoteParams {
     tags: Option<String>,
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct EditNoteParams {
+    /// Path to the note relative to notebook directory (must be in ai/)
+    path: String,
+    /// New full content for the note (overwrites existing)
+    content: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ReindexParams {
+    /// Optional list of specific file paths to reindex incrementally. If empty, does a full reindex.
+    #[serde(default)]
+    files: Vec<String>,
+}
+
 #[derive(Clone)]
 pub struct JkServer {
     notebook_dir: String,
@@ -51,27 +64,18 @@ impl JkServer {
         Self { notebook_dir }
     }
 
-    #[tool(description = "Semantic search over notes using embeddings. Returns TSV: score, file, line, heading, title")]
-    async fn search_notes(
+    #[tool(description = "Hybrid RAG search over notes. Combines semantic similarity, fulltext (BM25), tag boosting, and recency signals into a single ranked result set with excerpts. Use #tag tokens in the query to boost notes with matching tags. Comma-separated queries run in parallel and merge results. Returns markdown with scored results, metadata, and excerpts.")]
+    async fn rag_search(
         &self,
-        #[tool(aggr)] Parameters(params): Parameters<SearchParams>,
+        #[tool(aggr)] Parameters(params): Parameters<RagSearchParams>,
     ) -> Result<String, String> {
         let dir = self.notebook_dir.clone();
         let query = params.query;
-        let limit = params.limit.unwrap_or(20);
+        let limit = params.limit.unwrap_or(15);
+        let expand = params.expand_links.unwrap_or(true);
         tokio::task::spawn_blocking(move || {
-            let results = search::search(&dir, &query)?;
-            Ok(results
-                .iter()
-                .take(limit)
-                .map(|r| {
-                    format!(
-                        "{:.3}\t{}\t{}\t{}\t{}",
-                        r.sim, r.file, r.line, r.heading, r.title
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n"))
+            let (results, ollama_available) = rag::search(&dir, &query, limit, expand)?;
+            Ok(rag::format_results(&results, &query, ollama_available))
         })
         .await
         .map_err(|e| e.to_string())?
@@ -100,47 +104,51 @@ impl JkServer {
         .map_err(|e| e.to_string())?
     }
 
-    #[tool(description = "Read the full contents of a note by its relative path")]
+    #[tool(description = "Read the full contents of one or more notes by their relative paths. Returns each note separated by a header line.")]
     async fn read_note(
         &self,
         #[tool(aggr)] Parameters(params): Parameters<ReadNoteParams>,
     ) -> Result<String, String> {
         let dir = self.notebook_dir.clone();
-        let path = params.path;
+        let paths = params.paths;
         tokio::task::spawn_blocking(move || {
-            let full = Path::new(&dir).join(&path);
-            let canonical = full
-                .canonicalize()
-                .map_err(|e| format!("Invalid path: {e}"))?;
             let base = Path::new(&dir)
                 .canonicalize()
                 .map_err(|e| format!("Invalid notebook: {e}"))?;
-            if !canonical.starts_with(&base) {
-                return Err("Path outside notebook directory".into());
+            let mut out = String::new();
+            for (i, path) in paths.iter().enumerate() {
+                if i > 0 {
+                    out.push_str("\n---\n\n");
+                }
+                let full = Path::new(&dir).join(path);
+                let canonical = match full.canonicalize() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        out.push_str(&format!("## {path}\nError: {e}\n"));
+                        continue;
+                    }
+                };
+                if !canonical.starts_with(&base) {
+                    out.push_str(&format!("## {path}\nError: path outside notebook directory\n"));
+                    continue;
+                }
+                if canonical.extension().and_then(|e| e.to_str()) != Some("md") {
+                    out.push_str(&format!("## {path}\nError: only .md files can be read\n"));
+                    continue;
+                }
+                match std::fs::read_to_string(&canonical) {
+                    Ok(content) => {
+                        if paths.len() > 1 {
+                            out.push_str(&format!("## {path}\n\n"));
+                        }
+                        out.push_str(&content);
+                    }
+                    Err(e) => {
+                        out.push_str(&format!("## {path}\nError: {e}\n"));
+                    }
+                }
             }
-            if canonical.extension().and_then(|e| e.to_str()) != Some("md") {
-                return Err("Only .md files can be read".into());
-            }
-            std::fs::read_to_string(&canonical).map_err(|e| format!("Read error: {e}"))
-        })
-        .await
-        .map_err(|e| e.to_string())?
-    }
-
-    #[tool(description = "Search note contents using ripgrep (regex, smart-case)")]
-    async fn grep_notes(
-        &self,
-        #[tool(aggr)] Parameters(params): Parameters<GrepParams>,
-    ) -> Result<String, String> {
-        let dir = self.notebook_dir.clone();
-        let pattern = params.pattern;
-        tokio::task::spawn_blocking(move || {
-            let out = std::process::Command::new("rg")
-                .args(["--no-heading", "--smart-case", &pattern])
-                .current_dir(&dir)
-                .output()
-                .map_err(|e| format!("rg error: {e}"))?;
-            Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+            Ok(out)
         })
         .await
         .map_err(|e| e.to_string())?
@@ -162,13 +170,87 @@ impl JkServer {
         .map_err(|e| e.to_string())?
     }
 
+    #[tool(description = "Reindex the notebook: rebuilds zk index, regenerates index.md, and updates semantic embeddings. Pass specific file paths for incremental reindex, or omit for full reindex.")]
+    async fn reindex(
+        &self,
+        #[tool(aggr)] Parameters(params): Parameters<ReindexParams>,
+    ) -> Result<String, String> {
+        let dir = self.notebook_dir.clone();
+        let files = params.files;
+        tokio::task::spawn_blocking(move || {
+            // zk index
+            let _ = std::process::Command::new("zk")
+                .args(["index", "--quiet"])
+                .env("ZK_NOTEBOOK_DIR", &dir)
+                .current_dir(&dir)
+                .output();
+
+            // zk gen-index
+            let _ = std::process::Command::new("zk")
+                .args(["gen-index"])
+                .env("ZK_NOTEBOOK_DIR", &dir)
+                .current_dir(&dir)
+                .output();
+
+            // Embed
+            if files.is_empty() {
+                embed::full_reindex(&dir);
+                Ok("Full reindex complete.".to_string())
+            } else {
+                embed::incremental_reindex(&dir, &files);
+                Ok(format!("Incremental reindex complete ({} files).", files.len()))
+            }
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+
+    #[tool(description = "Write new content to an existing note in the ai/ directory. Only ai/ notes can be edited — human notes are read-only. Overwrites the entire file.")]
+    async fn edit_note(
+        &self,
+        #[tool(aggr)] Parameters(params): Parameters<EditNoteParams>,
+    ) -> Result<String, String> {
+        let dir = self.notebook_dir.clone();
+        let path = params.path;
+        let content = params.content;
+        tokio::task::spawn_blocking(move || {
+            // Must be in ai/ subdirectory
+            if !path.starts_with("ai/") {
+                return Err("Only notes in ai/ can be edited. Human notes are read-only.".into());
+            }
+            let full = Path::new(&dir).join(&path);
+            let canonical = full
+                .canonicalize()
+                .map_err(|e| format!("Invalid path: {e}"))?;
+            let base = Path::new(&dir)
+                .canonicalize()
+                .map_err(|e| format!("Invalid notebook: {e}"))?;
+            if !canonical.starts_with(&base) {
+                return Err("Path outside notebook directory".into());
+            }
+            if canonical.extension().and_then(|e| e.to_str()) != Some("md") {
+                return Err("Only .md files can be edited".into());
+            }
+            std::fs::write(&canonical, &content).map_err(|e| format!("Write error: {e}"))?;
+
+            // Incremental reindex for the edited file
+            let abs_str = canonical.to_string_lossy().to_string();
+            embed::incremental_reindex(&dir, &[abs_str]);
+
+            Ok(format!("Updated {path}"))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+
     tool_box!(JkServer {
-        search_notes,
+        rag_search,
         list_notes,
         read_note,
-        grep_notes,
+        edit_note,
         list_tags,
         create_note,
+        reindex,
     });
 
     #[tool(description = "Create a new note in the ai/ directory. Returns the relative path of the created note.")]
@@ -268,7 +350,7 @@ impl ServerHandler for JkServer {
                 version: env!("CARGO_PKG_VERSION").into(),
             },
             instructions: Some(
-                "jk notebook tools: search, list, read, grep, tag, and create notes".into(),
+                "jk notebook tools: rag_search (hybrid semantic+fulltext+tags+recency search), read_note, edit_note, create_note, list_notes, list_tags, reindex".into(),
             ),
         }
     }

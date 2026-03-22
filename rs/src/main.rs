@@ -4,8 +4,10 @@ mod cosine;
 mod db;
 mod embed;
 mod files;
+mod frontmatter;
 mod mcp;
 mod ollama;
+mod rag;
 mod search;
 
 fn main() {

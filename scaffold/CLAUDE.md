@@ -40,7 +40,7 @@ tags: #ai-generated, #topic
 - Always tag with `#ai-generated`
 - Link *to* human notes when relevant (creates discoverable backlinks without modifying the human note)
 - Use standard zk markdown links: `[Title](../sha)` for root notes, `[Title](sha)` for other ai notes
-- Create notes with `jk new-note "Title"` - it prints the path, a `---` separator, then the template content. The file is **not** created on disk - you must Write it yourself (filling in description/tags)
+- Create notes with the `create_note` MCP tool — it handles file creation, templating, and reindexing automatically
 
 ## Skills
 

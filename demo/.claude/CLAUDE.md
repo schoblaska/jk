@@ -1,0 +1,1 @@
+/Users/joey/.config/jk/scaffold/.claude/CLAUDE.md

@@ -1,70 +1,46 @@
 # jk Notebook Tools
 
-These tools are available via `jk <command>` from the notebook directory.
+All tools are available via the `jk` MCP server.
 
-## Creating Notes
+## rag_search
 
-### jk new-note "Title"
+Hybrid search combining semantic similarity, fulltext (BM25), tag boosting, and recency signals.
 
-Prints path and template to stdout. **Does not create the file** — you must Write it.
+- **query**: Natural language with optional `#tag` tokens for boosting
+  - `"puglia #travel"` — finds notes about Puglia, boosts notes tagged #travel
+  - `"machine learning, neural networks"` — comma-separated queries run in parallel and merge
+  - `"#travel #italy"` — tag-only query to browse by topic
+- **limit** (optional): Max results, default 15
+- **expand_links** (optional): Include one-hop linked notes, default true
 
-Output (3 lines separated by `---`):
-1. File path: `ai/<4-char-hex>.md`
-2. Template: title, date, empty description, `#ai-generated` tag
+Results include scores, file paths, dates, tags, and excerpts. Use `read_note` to get full content for the most relevant hits.
 
-Fill in `description:` and add relevant tags before writing.
+## read_note
 
-### jk reindex
+Read the full contents of one or more notes. Pass an array of relative paths (e.g. `["ai/a1b2.md", "travel/c3d4.md"]`). Results are separated by `---` headers.
 
-Rebuilds zk index, regenerates `index.md`, and updates semantic embeddings.
-**Run after creating or editing any note.**
+## edit_note
 
-    jk reindex             # full reindex
-    jk reindex path/to.md  # incremental (specified files only)
+Overwrite an existing note in `ai/`. Takes `path` and `content`. Human notes (root-level) are read-only. Auto-reindexes after editing.
 
-## Search
+## create_note
 
-**All search commands take only positional arguments. No flags (`-i`, `-w`, `--glob`, etc.) are supported.** Passing a flag will cause it to be interpreted as the search pattern, producing wrong results silently.
+Create a new note in `ai/` with title, optional content, and optional tags. Auto-reindexes.
 
-### jk search-grep "pattern"
+## list_notes
 
-Ripgrep search across all notes.
+List all notes as TSV (title, path). Useful for browsing.
 
-- **One argument:** the search pattern (ripgrep regex, not grep/BRE)
-- **Smart-case by default:** all-lowercase pattern = case-insensitive; mixed case = case-sensitive
-- **Output:** vimgrep format (`file:line:col:match`)
-- Use `|` for alternation (not `\|`): `jk search-grep "puglia|apulia"`
-- Case-insensitive search requires no flag — just use lowercase: `jk search-grep "puglia"`
-- WRONG: `jk search-grep -i "puglia"` — `-i` becomes the pattern, `"puglia"` is ignored
+## list_tags
 
-### jk search-semantic "query"
+List all tags used in the notebook. Use to discover tag names for `rag_search` queries.
 
-Natural language similarity search over note embeddings.
+## reindex
 
-- **One argument:** the query (plain English, not regex)
-- **Output:** TSV (score, file, chunk)
-- Returns top results by cosine similarity
-- Requires embeddings to be built (`jk reindex`)
-
-### jk search-titles
-
-Lists all notes. Takes no arguments.
-
-- **Output:** TSV (`title<TAB>path`), sorted alphabetically
-
-### jk search-slack "query" [limit]
-
-Search Slack messages.
-
-- **First argument:** search query (required)
-- **Second argument:** max results (optional, default 50)
-- **Output:** TSV (`channel<TAB>datetime<TAB>text`)
-- Requires `slackdump` CLI
+Rebuild the zk index, regenerate `index.md`, and update semantic embeddings. Pass specific file paths for incremental reindex, or omit for full reindex.
 
 ## Search Strategy
 
 1. **index.md** — read first for a full map of all notes by title
-2. **search-titles** — find a note by name
-3. **search-grep** — exact text, specific phrases, keywords
-4. **search-semantic** — conceptually related notes, even without keyword overlap
-5. **search-slack** — relevant Slack conversations
+2. **rag_search** — your primary search tool for everything: keyword lookup, conceptual queries, tag-filtered browsing, finding related notes
+3. **read_note** — dig into the top results from rag_search
