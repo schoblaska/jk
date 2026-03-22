@@ -118,7 +118,7 @@ return {
     { "<leader>j", "<Cmd>ZkNew { group = 'journal' }<CR>", desc = "Journal" },
     { "<leader>o", function() require("jk.search").titles() end, desc = "Open note" },
     { "<leader>t", function() require("jk.tag_picker")() end, desc = "Tags" },
-    { "<leader>f", function() require("jk.search").grep() end, desc = "Search notes" },
+    { "<leader>f", function() require("jk.search").search() end, desc = "Search notes" },
     { "<leader>f", ":'<,'>ZkMatch<CR>", mode = "v", desc = "Search notes (selection)" },
     { "<leader>r", "<Cmd>ZkNotes { sort = { 'modified' } }<CR>", desc = "Recent notes" },
     { "<leader>e", "<Cmd>AerialToggle float<CR>", desc = "Outline", ft = "markdown" },
@@ -176,7 +176,6 @@ return {
     end, desc = "Delete note" },
 
     { "<leader>X", function() require("jk.todos")() end, desc = "TODOs" },
-    { "<leader>s", function() require("jk.search").semantic() end, desc = "Semantic search" },
     { "<leader>a", function() require("jk.claude").toggle() end, desc = "Toggle Claude" },
     { "<leader>A", function() require("jk.claude").open() end, desc = "New Claude" },
   },

@@ -24,6 +24,7 @@ const LINK_SCORE_FACTOR: f64 = 0.6;
 pub struct RagResult {
     pub file: String,
     pub heading: String,
+    pub line: i64,
     pub title: String,
     pub score: f64,
     pub date: Option<String>,
@@ -338,6 +339,7 @@ fn search_single_query(
             RagResult {
                 file: c.file,
                 heading: c.heading,
+                line: c.line,
                 title: c.title,
                 score,
                 date,
@@ -445,7 +447,7 @@ fn expand_links(
             })
             .ok();
 
-        if let Some((heading, _line, title, _text)) = chunk {
+        if let Some((heading, chunk_line, title, _text)) = chunk {
             let via_score = top_scores.get(via_file.as_str()).copied().unwrap_or(0.0);
             let score = LINK_SCORE_FACTOR * via_score;
             let via_title = title_map
@@ -460,6 +462,7 @@ fn expand_links(
             results.push(RagResult {
                 file: linked_file.clone(),
                 heading: strip_heading_prefix(&heading).to_string(),
+                line: chunk_line,
                 title: title.unwrap_or_default(),
                 score,
                 date,
@@ -493,6 +496,7 @@ pub fn search(
     raw_query: &str,
     limit: usize,
     do_expand_links: bool,
+    strict_tags: bool,
 ) -> Result<(Vec<RagResult>, bool), String> {
     if raw_query.trim().is_empty() {
         return Ok((vec![], true));
@@ -544,7 +548,25 @@ pub fn search(
         }
     }
 
+    // Collect all query tags for strict filtering
+    let all_query_tags: Vec<String> = parsed_queries
+        .iter()
+        .flat_map(|pq| pq.tags.iter().cloned())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
     let mut final_results: Vec<RagResult> = merged.into_values().collect();
+
+    // Strict tag filtering: remove results whose file doesn't match ALL query tags
+    if strict_tags && !all_query_tags.is_empty() {
+        final_results.retain(|r| {
+            let meta = file_meta.get(&r.file);
+            meta.map(|m| tag_boost(&m.tags, &all_query_tags) >= 1.0)
+                .unwrap_or(false)
+        });
+    }
+
     final_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
     // One-hop link expansion
@@ -552,6 +574,13 @@ pub fn search(
         let existing_files: HashSet<String> =
             final_results.iter().map(|r| r.file.clone()).collect();
         let mut link_results = expand_links(&conn, &final_results, &existing_files, &file_meta);
+        if strict_tags && !all_query_tags.is_empty() {
+            link_results.retain(|r| {
+                let meta = file_meta.get(&r.file);
+                meta.map(|m| tag_boost(&m.tags, &all_query_tags) >= 1.0)
+                    .unwrap_or(false)
+            });
+        }
         final_results.append(&mut link_results);
         final_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     }

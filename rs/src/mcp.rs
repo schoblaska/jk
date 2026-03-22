@@ -69,6 +69,16 @@ struct EditNoteParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct PatchNoteParams {
+    /// Path to the note relative to notebook directory (must be in ai/)
+    path: String,
+    /// Exact text to find in the note
+    old_content: String,
+    /// Text to replace it with
+    new_content: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct RecentJournalsParams {
     /// Number of recent journal entries to return (default: 10)
     #[serde(default)]
@@ -111,7 +121,7 @@ impl JkServer {
         let limit = params.limit.unwrap_or(20);
         let expand = params.expand_links.unwrap_or(true);
         tokio::task::spawn_blocking(move || {
-            let (results, ollama_available) = rag::search(&dir, &query, limit, expand)?;
+            let (results, ollama_available) = rag::search(&dir, &query, limit, expand, false)?;
             Ok(rag::format_results(&results, &query, ollama_available, &dir))
         })
         .await
@@ -280,6 +290,60 @@ impl JkServer {
         .map_err(|e| e.to_string())?
     }
 
+    #[tool(description = "Search-and-replace within an existing note in ai/. Finds old_content (must appear exactly once) and replaces it with new_content. Include enough surrounding context in old_content to make the match unique.")]
+    async fn patch_note(
+        &self,
+        #[tool(aggr)] Parameters(params): Parameters<PatchNoteParams>,
+    ) -> Result<String, String> {
+        let dir = self.notebook_dir.clone();
+        let path = params.path;
+        let old_content = params.old_content;
+        let new_content = params.new_content;
+        tokio::task::spawn_blocking(move || {
+            if !path.starts_with("ai/") {
+                return Err("Only notes in ai/ can be edited. Human notes are read-only.".into());
+            }
+            let full = Path::new(&dir).join(&path);
+            let canonical = full
+                .canonicalize()
+                .map_err(|e| format!("Invalid path: {e}"))?;
+            let base = Path::new(&dir)
+                .canonicalize()
+                .map_err(|e| format!("Invalid notebook: {e}"))?;
+            if !canonical.starts_with(&base) {
+                return Err("Path outside notebook directory".into());
+            }
+            if canonical.extension().and_then(|e| e.to_str()) != Some("md") {
+                return Err("Only .md files can be edited".into());
+            }
+            if old_content == new_content {
+                return Err("old_content and new_content are identical".into());
+            }
+
+            let content = std::fs::read_to_string(&canonical)
+                .map_err(|e| format!("Read error: {e}"))?;
+            let count = content.matches(&old_content).count();
+            if count == 0 {
+                return Err("old_content not found in the note".into());
+            }
+            if count > 1 {
+                return Err(format!(
+                    "old_content appears {count} times — include more surrounding context to make it unique"
+                ));
+            }
+
+            let patched = content.replacen(&old_content, &new_content, 1);
+            std::fs::write(&canonical, &patched).map_err(|e| format!("Write error: {e}"))?;
+
+            let abs_str = canonical.to_string_lossy().to_string();
+            embed::incremental_reindex(&dir, &[abs_str]);
+
+            Ok(format!("Patched {path}"))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+
     #[tool(description = "Get recent journal entries with full content, in reverse chronological order. Set source to \"user\" (default), \"ai\", or \"all\".")]
     async fn recent_journals(
         &self,
@@ -393,6 +457,7 @@ impl JkServer {
         list_notes,
         read_note,
         edit_note,
+        patch_note,
         list_tags,
         create_note,
         reindex,
@@ -488,7 +553,7 @@ impl ServerHandler for JkServer {
                 version: env!("CARGO_PKG_VERSION").into(),
             },
             instructions: Some(
-                "jk notebook tools: rag_search, read_note, edit_note, create_note, list_notes, list_tags, reindex, recent_journals, append_ai_journal".into(),
+                "jk notebook tools: rag_search, read_note, edit_note, patch_note, create_note, list_notes, list_tags, reindex, recent_journals, append_ai_journal".into(),
             ),
         }
     }

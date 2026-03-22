@@ -26,6 +26,24 @@ fn main() {
             let query = args[2..].join(" ");
             search::run(&notebook_dir, &query);
         }
+        "rag-search" => {
+            let query = args[2..].join(" ");
+            match rag::search(&notebook_dir, &query, 30, true, true) {
+                Ok((results, _)) => {
+                    for r in &results {
+                        let linked = r.linked_from.as_deref().unwrap_or("");
+                        println!(
+                            "{:.3}\t{}\t{}\t{}\t{}\t{}",
+                            r.score, r.file, r.line, r.heading, r.title, linked
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
         "mcp" => {
             if args.len() < 3 {
                 eprintln!("Usage: jk-tools mcp <notebook-dir>");
@@ -54,6 +72,7 @@ fn usage() {
          Commands:\n  \
          embed [files...]     Full reindex (no args) or incremental (with files)\n  \
          search <query>       Semantic search, outputs TSV\n  \
+         rag-search <query>   Blended search (semantic + FTS + tags + links), outputs TSV\n  \
          mcp <notebook-dir>   Start MCP server (stdio)"
     );
 }

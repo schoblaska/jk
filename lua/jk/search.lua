@@ -4,23 +4,10 @@ local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local sorters = require("telescope.sorters")
 local conf = require("telescope.config").values
-local actions = require("telescope.actions")
-local action_state = require("telescope.actions.state")
 
 local headings = require("jk.headings")
 local tags = require("jk.tags")
 local jk_home = vim.env.JK_HOME or (vim.fn.stdpath("config"))
-
---- Build path→title map from zk list (synchronous, fast)
-local function title_map()
-  local raw = vim.fn.system({ "zk", "list", "--quiet", "--format", "{{path}}\t{{title}}" })
-  local map = {}
-  for line in raw:gmatch("[^\n]+") do
-    local path, title = line:match("^(.-)\t(.+)$")
-    if path and title then map[path] = title end
-  end
-  return map
-end
 
 function M.titles()
   local tag_index = tags.build_index()
@@ -94,70 +81,21 @@ function M.titles()
   }):find()
 end
 
-function M.grep()
-  -- Precompute outside async context (vim.fn not safe in new_job entry_maker)
-  local titles = title_map()
-  local tag_index = tags.build_index()
-  headings.clear_cache()
-
-  local current_tags = {}
-
-  -- Fallback: strip directory + extension from path (pure Lua, no vim.fn)
-  local function basename_stem(path)
-    local name = path:match("[^/]+$") or path
-    return name:match("(.+)%.[^.]+$") or name
-  end
+function M.search()
+  local script = jk_home .. "/bin/search-rag"
 
   local function entry_maker(line)
-    local file, lnum, col, text = line:match("^(.-):(%d+):(%d+):(.*)$")
-    if not file then return nil end
-    if not tags.file_matches(file, current_tags, tag_index) then return nil end
-    lnum = tonumber(lnum)
-    col = tonumber(col)
-
-    local title = titles[file] or basename_stem(file)
-    local heading = headings.at(file, lnum)
-    local label = headings.label(title, heading)
-
-    return {
-      value = line,
-      display = label .. ": " .. text,
-      ordinal = label .. " " .. text,
-      filename = file,
-      lnum = lnum,
-      col = col,
-    }
-  end
-
-  pickers.new({}, {
-    prompt_title = "Grep Notes",
-    finder = finders.new_job(function(prompt)
-      if not prompt or prompt == "" then return nil end
-      local query, ptags = tags.parse_prompt(prompt)
-      current_tags = ptags
-      if query == "" then return nil end
-      return { "rg", "--vimgrep", "--no-heading", "--smart-case", "--", query }
-    end, entry_maker),
-    previewer = conf.grep_previewer({}),
-    sorter = sorters.highlighter_only({}),
-  }):find()
-end
-
-function M.semantic()
-  local script = jk_home .. "/bin/search-semantic"
-  local tag_index = tags.build_index()
-
-  local current_tags = {}
-
-  local function entry_maker(line)
-    local sim, file, lnum, heading, title = line:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
-    if not sim then return nil end
-    if not tags.file_matches(file, current_tags, tag_index) then return nil end
+    local score, file, lnum, heading, title, linked_from =
+      line:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
+    if not score then return nil end
     lnum = tonumber(lnum) or 1
     local label = headings.label(
       title ~= "" and title or heading,
       title ~= "" and heading or nil
     )
+    if linked_from and linked_from ~= "" then
+      label = label .. " (via " .. linked_from .. ")"
+    end
     return {
       value = file,
       display = label,
@@ -168,13 +106,10 @@ function M.semantic()
   end
 
   pickers.new({}, {
-    prompt_title = "Semantic Search",
+    prompt_title = "Search Notes",
     finder = finders.new_job(function(prompt)
       if not prompt or prompt == "" then return nil end
-      local query, ptags = tags.parse_prompt(prompt)
-      current_tags = ptags
-      if query == "" then return nil end
-      return { script, query }
+      return { script, prompt }
     end, entry_maker),
     previewer = conf.grep_previewer({}),
     sorter = sorters.highlighter_only({}),

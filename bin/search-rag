@@ -5,4 +5,4 @@ SELF="$0"
 [ -L "$SELF" ] && SELF="$(readlink "$SELF")"
 BIN="$(dirname "$SELF")"
 
-exec "$BIN/../rs/target/release/jk-tools" search "$@"
+exec "$BIN/../rs/target/release/jk-tools" rag-search "$@"

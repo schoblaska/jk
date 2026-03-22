@@ -23,6 +23,10 @@ Read the full contents of one or more notes. Pass an array of relative paths (e.
 
 Overwrite an existing note in `ai/`. Takes `path` and `content`. Human notes (root-level) are read-only. Auto-reindexes after editing.
 
+## patch_note
+
+Search-and-replace within an existing note in `ai/`. Takes `path`, `old_content` (exact text to find), and `new_content` (replacement). Fails if `old_content` is not found or appears more than once — include enough surrounding context to make the match unique. Auto-reindexes after patching. Prefer this over `edit_note` for incremental changes.
+
 ## create_note
 
 Create a new note in `ai/` with title, optional content, and optional tags. Auto-reindexes.
