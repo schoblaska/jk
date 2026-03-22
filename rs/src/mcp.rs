@@ -108,11 +108,11 @@ impl JkServer {
     ) -> Result<String, String> {
         let dir = self.notebook_dir.clone();
         let query = params.query;
-        let limit = params.limit.unwrap_or(15);
+        let limit = params.limit.unwrap_or(20);
         let expand = params.expand_links.unwrap_or(true);
         tokio::task::spawn_blocking(move || {
             let (results, ollama_available) = rag::search(&dir, &query, limit, expand)?;
-            Ok(rag::format_results(&results, &query, ollama_available))
+            Ok(rag::format_results(&results, &query, ollama_available, &dir))
         })
         .await
         .map_err(|e| e.to_string())?

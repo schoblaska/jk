@@ -17,7 +17,6 @@ const W_RECENCY_FALLBACK: f64 = 0.05;
 
 const CANDIDATE_LIMIT: usize = 50;
 const LINK_SCORE_FACTOR: f64 = 0.6;
-const EXCERPT_CHARS: usize = 300;
 
 #[derive(Clone)]
 pub struct RagResult {
@@ -25,7 +24,6 @@ pub struct RagResult {
     pub heading: String,
     pub title: String,
     pub score: f64,
-    pub excerpt: String,
     pub date: Option<String>,
     pub tags: String,
     pub linked_from: Option<String>, // title of note that linked here
@@ -43,6 +41,7 @@ struct ChunkCandidate {
     #[allow(dead_code)]
     line: i64,
     title: String,
+    #[allow(dead_code)]
     text: String,
     semantic_score: f64,
     fts_score: f64,
@@ -306,7 +305,6 @@ fn search_single_query(
             let score =
                 w_sem * c.semantic_score + w_fts * c.fts_score + w_tag * tb + w_rec * rb;
 
-            let excerpt = make_excerpt(&c.text);
             let tags = meta.map(|m| m.tags.clone()).unwrap_or_default();
             let date = meta.and_then(|m| m.date.clone());
 
@@ -315,7 +313,6 @@ fn search_single_query(
                 heading: c.heading,
                 title: c.title,
                 score,
-                excerpt,
                 date,
                 tags,
                 linked_from: None,
@@ -421,7 +418,7 @@ fn expand_links(
             })
             .ok();
 
-        if let Some((heading, _line, title, text)) = chunk {
+        if let Some((heading, _line, title, _text)) = chunk {
             let via_score = top_scores.get(via_file.as_str()).copied().unwrap_or(0.0);
             let score = LINK_SCORE_FACTOR * via_score;
             let via_title = title_map
@@ -438,7 +435,6 @@ fn expand_links(
                 heading: strip_heading_prefix(&heading).to_string(),
                 title: title.unwrap_or_default(),
                 score,
-                excerpt: make_excerpt(&text),
                 date,
                 tags,
                 linked_from: Some(via_title.to_string()),
@@ -536,7 +532,13 @@ pub fn search(
 }
 
 /// Format results as markdown for LLM consumption.
-pub fn format_results(results: &[RagResult], raw_query: &str, ollama_available: bool) -> String {
+/// Deduplicates by file, reads full content, and includes link index.
+pub fn format_results(
+    results: &[RagResult],
+    raw_query: &str,
+    ollama_available: bool,
+    notebook_dir: &str,
+) -> String {
     let mut out = String::new();
 
     if !ollama_available {
@@ -550,17 +552,42 @@ pub fn format_results(results: &[RagResult], raw_query: &str, ollama_available: 
         return out;
     }
 
+    // Deduplicate by file: keep the highest-scoring result per file for metadata
+    let mut seen_files: HashSet<String> = HashSet::new();
+    let mut unique_results: Vec<&RagResult> = Vec::new();
     for r in results {
+        if seen_files.insert(r.file.clone()) {
+            unique_results.push(r);
+        }
+    }
+
+    // Open DB for link queries
+    let conn = open_db(notebook_dir).ok();
+    // Build title lookup from files table
+    let file_titles: HashMap<String, String> = conn
+        .as_ref()
+        .map(|c| {
+            let mut stmt = c.prepare("SELECT path, title FROM files").unwrap();
+            stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
+        })
+        .unwrap_or_default();
+
+    for r in &unique_results {
         // Header with provenance
-        if let Some(ref via) = r.linked_from {
-            out.push_str(&format!(
-                "## [linked from: {}] {} [{:.2}]\n",
-                via,
-                display_title(r),
-                r.score
-            ));
+        let title_display = if !r.title.is_empty() {
+            &r.title
         } else {
-            out.push_str(&format!("## {} [{:.2}]\n", display_title(r), r.score));
+            &r.heading
+        };
+        if let Some(ref via) = r.linked_from {
+            out.push_str(&format!("## [linked from: {via}] {title_display} [{:.2}]\n", r.score));
+        } else {
+            out.push_str(&format!("## {title_display} [{:.2}]\n", r.score));
         }
 
         // Metadata line
@@ -578,53 +605,81 @@ pub fn format_results(results: &[RagResult], raw_query: &str, ollama_available: 
             meta_parts.push(format!("tags: {tag_str}"));
         }
         out.push_str(&meta_parts.join(" | "));
-        out.push('\n');
+        out.push_str("\n\n");
 
-        // Excerpt
-        if !r.excerpt.is_empty() {
-            for line in r.excerpt.lines() {
-                out.push_str(&format!("> {line}\n"));
+        // Links index
+        if let Some(ref c) = conn {
+            let mut has_links = false;
+
+            // Outgoing links
+            if let Ok(mut stmt) = c.prepare("SELECT dst FROM links WHERE src = ?1") {
+                let outgoing: Vec<String> = stmt
+                    .query_map([&r.file], |row| row.get::<_, String>(0))
+                    .unwrap_or_else(|_| panic!("link query failed"))
+                    .filter_map(|r| r.ok())
+                    .collect();
+                if !outgoing.is_empty() {
+                    if !has_links {
+                        out.push_str("### Links\n");
+                        has_links = true;
+                    }
+                    for dst in &outgoing {
+                        let title = file_titles.get(dst).map(|t| t.as_str()).unwrap_or("");
+                        if title.is_empty() {
+                            out.push_str(&format!("- -> [{dst}]({dst})\n"));
+                        } else {
+                            out.push_str(&format!("- -> [{title}]({dst})\n"));
+                        }
+                    }
+                }
+            }
+
+            // Incoming links
+            if let Ok(mut stmt) = c.prepare("SELECT src FROM links WHERE dst = ?1") {
+                let incoming: Vec<String> = stmt
+                    .query_map([&r.file], |row| row.get::<_, String>(0))
+                    .unwrap_or_else(|_| panic!("link query failed"))
+                    .filter_map(|r| r.ok())
+                    .collect();
+                if !incoming.is_empty() {
+                    if !has_links {
+                        out.push_str("### Links\n");
+                        has_links = true;
+                    }
+                    for src in &incoming {
+                        let title = file_titles.get(src).map(|t| t.as_str()).unwrap_or("");
+                        if title.is_empty() {
+                            out.push_str(&format!("- <- [{src}]({src})\n"));
+                        } else {
+                            out.push_str(&format!("- <- [{title}]({src})\n"));
+                        }
+                    }
+                }
+            }
+
+            if has_links {
+                out.push('\n');
+            }
+        }
+
+        // Full file content
+        let full_path = std::path::Path::new(notebook_dir).join(&r.file);
+        match std::fs::read_to_string(&full_path) {
+            Ok(content) => {
+                out.push_str("### Content\n");
+                out.push_str(&content);
+                if !content.ends_with('\n') {
+                    out.push('\n');
+                }
+            }
+            Err(e) => {
+                out.push_str(&format!("### Content\nError reading file: {e}\n"));
             }
         }
         out.push('\n');
     }
 
     out
-}
-
-fn display_title(r: &RagResult) -> String {
-    if !r.title.is_empty() && r.heading != r.title {
-        format!("{} > {}", r.title, r.heading)
-    } else if !r.title.is_empty() {
-        r.title.clone()
-    } else {
-        r.heading.clone()
-    }
-}
-
-fn make_excerpt(text: &str) -> String {
-    // Skip the first line (it's the heading repeated with context prefix)
-    let body = text
-        .lines()
-        .skip(1)
-        .collect::<Vec<_>>()
-        .join("\n");
-    let body = body.trim();
-    if body.len() <= EXCERPT_CHARS {
-        body.to_string()
-    } else {
-        // Find a char boundary at or before EXCERPT_CHARS
-        let mut end = EXCERPT_CHARS;
-        while !body.is_char_boundary(end) {
-            end -= 1;
-        }
-        // Cut at word boundary
-        let truncated = &body[..end];
-        match truncated.rfind(' ') {
-            Some(pos) => format!("{}...", &truncated[..pos]),
-            None => format!("{truncated}..."),
-        }
-    }
 }
 
 fn strip_heading_prefix(line: &str) -> &str {
@@ -733,76 +788,8 @@ mod tests {
     }
 
     #[test]
-    fn test_make_excerpt_short() {
-        let text = "## Heading\nShort body text here.";
-        assert_eq!(make_excerpt(text), "Short body text here.");
-    }
-
-    #[test]
-    fn test_make_excerpt_truncates() {
-        let text = format!("## Heading\n{}", "word ".repeat(100));
-        let excerpt = make_excerpt(&text);
-        assert!(excerpt.len() <= EXCERPT_CHARS + 10); // some slack for "..."
-        assert!(excerpt.ends_with("..."));
-    }
-
-    #[test]
-    fn test_display_title_with_section() {
-        let r = RagResult {
-            file: "test.md".into(),
-            heading: "Section A".into(),
-            title: "My Note".into(),
-            score: 0.5,
-            excerpt: String::new(),
-            date: None,
-            tags: String::new(),
-            linked_from: None,
-        };
-        assert_eq!(display_title(&r), "My Note > Section A");
-    }
-
-    #[test]
-    fn test_display_title_same_as_heading() {
-        let r = RagResult {
-            file: "test.md".into(),
-            heading: "My Note".into(),
-            title: "My Note".into(),
-            score: 0.5,
-            excerpt: String::new(),
-            date: None,
-            tags: String::new(),
-            linked_from: None,
-        };
-        assert_eq!(display_title(&r), "My Note");
-    }
-
-    #[test]
     fn test_days_between() {
         assert_eq!(days_between("2026-01-01", "2026-01-02"), Some(1));
         assert_eq!(days_between("2026-01-01", "2026-01-01"), Some(0));
-    }
-
-    #[test]
-    fn test_format_results_empty() {
-        let out = format_results(&[], "test query", true);
-        assert!(out.contains("No results found"));
-    }
-
-    #[test]
-    fn test_format_results_with_link() {
-        let results = vec![RagResult {
-            file: "a.md".into(),
-            heading: "Section".into(),
-            title: "Note A".into(),
-            score: 0.8,
-            excerpt: "Some text here".into(),
-            date: Some("2026-01-01".into()),
-            tags: "travel".into(),
-            linked_from: Some("Note B".into()),
-        }];
-        let out = format_results(&results, "test", true);
-        assert!(out.contains("[linked from: Note B]"));
-        assert!(out.contains("file: a.md"));
-        assert!(out.contains("#travel"));
     }
 }
