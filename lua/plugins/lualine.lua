@@ -36,7 +36,7 @@ return {
         function() return require("jk.zk_status").links() end,
       },
       lualine_x = {
-        { "diagnostics", sources = { "nvim_lsp" } },
+        "diff",
       },
       lualine_y = {
         function()
