@@ -162,10 +162,6 @@ pub fn is_journal(rel_path: &str) -> bool {
     }
 }
 
-/// Check if a journal path belongs to the user (root-level) vs AI (ai/).
-pub fn is_user_journal(rel_path: &str) -> bool {
-    is_journal(rel_path) && !rel_path.starts_with("ai/")
-}
 
 #[cfg(test)]
 mod tests {
@@ -244,10 +240,8 @@ mod tests {
         // User journals
         assert!(is_journal("2026-02-23.md"));
         assert!(is_journal("2025-01-01.md"));
-        assert!(is_user_journal("2026-02-23.md"));
         // AI journals
         assert!(is_journal("ai/2026-02-23.md"));
-        assert!(!is_user_journal("ai/2026-02-23.md"));
         // Not journals
         assert!(!is_journal("notes.md"));
         assert!(!is_journal("abcd-ef-gh.md"));

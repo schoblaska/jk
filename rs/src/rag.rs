@@ -5,14 +5,16 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
-const W_SEMANTIC: f64 = 0.50;
-const W_FTS: f64 = 0.25;
+const W_SEMANTIC: f64 = 0.45;
+const W_FTS: f64 = 0.20;
+const W_SUBSTR: f64 = 0.10;
 const W_TAG: f64 = 0.10;
 const W_LINKS: f64 = 0.10;
 const W_RECENCY: f64 = 0.05;
 
 // Fallback weights when Ollama is unavailable
-const W_FTS_FALLBACK: f64 = 0.70;
+const W_FTS_FALLBACK: f64 = 0.55;
+const W_SUBSTR_FALLBACK: f64 = 0.15;
 const W_TAG_FALLBACK: f64 = 0.10;
 const W_LINKS_FALLBACK: f64 = 0.15;
 const W_RECENCY_FALLBACK: f64 = 0.05;
@@ -49,6 +51,7 @@ struct ChunkCandidate {
     text: String,
     semantic_score: f64,
     fts_score: f64,
+    substr_score: f64,
 }
 
 struct FileMeta {
@@ -107,6 +110,7 @@ fn semantic_search(conn: &Connection, query_embedding: &[f64]) -> Vec<ChunkCandi
                 text,
                 semantic_score: sim,
                 fts_score: 0.0,
+                substr_score: 0.0,
             })
         })
         .collect();
@@ -160,6 +164,7 @@ fn fts_search(conn: &Connection, query_text: &str) -> Vec<ChunkCandidate> {
                 text,
                 semantic_score: 0.0,
                 fts_score: 1.0 / (1.0 + fts_rank.abs()),
+                substr_score: 0.0,
             })
         },
     ) {
@@ -167,6 +172,99 @@ fn fts_search(conn: &Connection, query_text: &str) -> Vec<ChunkCandidate> {
         Err(_) => vec![],
     };
     results
+}
+
+fn substr_search(conn: &Connection, query_text: &str) -> Vec<ChunkCandidate> {
+    let terms: Vec<String> = query_text
+        .split_whitespace()
+        .map(|t| t.to_lowercase())
+        .filter(|t| t.len() >= 2)
+        .collect();
+    if terms.is_empty() {
+        return vec![];
+    }
+
+    // Build LIKE conditions: match any term in text, title, or heading
+    let mut conditions = Vec::new();
+    let mut params: Vec<String> = Vec::new();
+    for (i, term) in terms.iter().enumerate() {
+        let p = i + 1;
+        conditions.push(format!(
+            "(LOWER(text) LIKE ?{p} OR LOWER(COALESCE(title,'')) LIKE ?{p} OR LOWER(heading) LIKE ?{p})"
+        ));
+        params.push(format!("%{term}%"));
+    }
+
+    let sql = format!(
+        "SELECT id, file, heading, line, title, text FROM chunks WHERE {} LIMIT {}",
+        conditions.join(" OR "),
+        CANDIDATE_LIMIT * 2
+    );
+
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+        params.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
+
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+
+    let rows: Vec<_> = match stmt.query_map(rusqlite::params_from_iter(&param_refs), |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+            row.get::<_, String>(5)?,
+        ))
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => return vec![],
+    };
+
+    let mut candidates: Vec<ChunkCandidate> = rows
+        .into_iter()
+        .map(|(id, file, heading, line, title, text)| {
+            let text_lower = text.to_lowercase();
+            let title_lower = title.to_lowercase();
+            let heading_lower = heading.to_lowercase();
+
+            let mut hits = 0usize;
+            let mut title_hits = 0usize;
+            for term in &terms {
+                let in_text = text_lower.contains(term.as_str());
+                let in_title = title_lower.contains(term.as_str());
+                let in_heading = heading_lower.contains(term.as_str());
+                if in_text || in_title || in_heading {
+                    hits += 1;
+                }
+                if in_title || in_heading {
+                    title_hits += 1;
+                }
+            }
+
+            let base = hits as f64 / terms.len() as f64;
+            let title_bonus = 0.2 * (title_hits as f64 / terms.len() as f64);
+            let score = (base + title_bonus).min(1.0);
+
+            ChunkCandidate {
+                id,
+                file,
+                heading: strip_heading_prefix(&heading).to_string(),
+                line,
+                title,
+                text,
+                semantic_score: 0.0,
+                fts_score: 0.0,
+                substr_score: score,
+            }
+        })
+        .collect();
+
+    candidates.sort_by(|a, b| b.substr_score.partial_cmp(&a.substr_score).unwrap());
+    candidates.truncate(CANDIDATE_LIMIT);
+    candidates
 }
 
 fn load_file_meta(conn: &Connection) -> HashMap<String, FileMeta> {
@@ -250,18 +348,18 @@ fn search_single_query(
     let mut candidates: HashMap<i64, ChunkCandidate> = HashMap::new();
 
     // Semantic search
-    let (w_sem, w_fts, w_tag, w_links, w_rec) = if ollama_available {
+    let (w_sem, w_fts, w_substr, w_tag, w_links, w_rec) = if ollama_available {
         if let Some(embeddings) = ollama::embed(&[parsed.text.as_str()]) {
             let sem_results = semantic_search(conn, &embeddings[0]);
             for c in sem_results {
                 candidates.insert(c.id, c);
             }
-            (W_SEMANTIC, W_FTS, W_TAG, W_LINKS, W_RECENCY)
+            (W_SEMANTIC, W_FTS, W_SUBSTR, W_TAG, W_LINKS, W_RECENCY)
         } else {
-            (0.0, W_FTS_FALLBACK, W_TAG_FALLBACK, W_LINKS_FALLBACK, W_RECENCY_FALLBACK)
+            (0.0, W_FTS_FALLBACK, W_SUBSTR_FALLBACK, W_TAG_FALLBACK, W_LINKS_FALLBACK, W_RECENCY_FALLBACK)
         }
     } else {
-        (0.0, W_FTS_FALLBACK, W_TAG_FALLBACK, W_LINKS_FALLBACK, W_RECENCY_FALLBACK)
+        (0.0, W_FTS_FALLBACK, W_SUBSTR_FALLBACK, W_TAG_FALLBACK, W_LINKS_FALLBACK, W_RECENCY_FALLBACK)
     };
 
     // FTS search
@@ -271,6 +369,17 @@ fn search_single_query(
             .entry(c.id)
             .and_modify(|existing| {
                 existing.fts_score = c.fts_score;
+            })
+            .or_insert(c);
+    }
+
+    // Substring / partial-match search
+    let substr_results = substr_search(conn, &parsed.text);
+    for c in substr_results {
+        candidates
+            .entry(c.id)
+            .and_modify(|existing| {
+                existing.substr_score = c.substr_score;
             })
             .or_insert(c);
     }
@@ -313,6 +422,7 @@ fn search_single_query(
                     text,
                     semantic_score: 0.0,
                     fts_score: 0.0,
+                    substr_score: 0.0,
                 });
             }
         }
@@ -331,8 +441,12 @@ fn search_single_query(
                 .map(|m| recency_score(m.date.as_deref(), m.is_journal))
                 .unwrap_or(0.0);
 
-            let score =
-                w_sem * c.semantic_score + w_fts * c.fts_score + w_tag * tb + w_links * lb + w_rec * rb;
+            let score = w_sem * c.semantic_score
+                + w_fts * c.fts_score
+                + w_substr * c.substr_score
+                + w_tag * tb
+                + w_links * lb
+                + w_rec * rb;
 
             let tags = meta.map(|m| m.tags.clone()).unwrap_or_default();
             let date = meta.and_then(|m| m.date.clone());
