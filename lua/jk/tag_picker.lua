@@ -38,14 +38,25 @@ local function show_notes(tags)
     }
   end
 
+  local db = (vim.env.ZK_NOTEBOOK_DIR or vim.fn.getcwd()) .. "/.zk/search.db"
+  local tag_where = table.concat(
+    vim.tbl_map(function(t)
+      return "(' ' || f.tags || ' ') LIKE '% " .. t .. " %'"
+    end, tags),
+    " AND "
+  )
+  local sql = string.format(
+    "SELECT '1.000' || char(9) || c.file || char(9) || c.line || char(9) || c.heading || char(9) || f.title || char(9) || '' FROM chunks c JOIN files f ON c.file = f.path WHERE %s ORDER BY f.title, c.line",
+    tag_where
+  )
+
   tp.new({}, {
     prompt_title = "Notes tagged #" .. table.concat(tags, ", #"),
     finder = tf.new_job(function(prompt)
-      local query = tag_prefix
-      if prompt and prompt ~= "" then
-        query = tag_prefix .. " " .. prompt
+      if not prompt or prompt == "" then
+        return { "sqlite3", "-separator", "\t", db, sql }
       end
-      return { script, query }
+      return { script, tag_prefix .. " " .. prompt }
     end, entry_maker),
     previewer = tconf.grep_previewer({}),
     sorter = sorters.highlighter_only({}),
