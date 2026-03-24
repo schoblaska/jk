@@ -4,60 +4,52 @@
 --   require("jk.tag_picker")({ "tag1" })    - skip browser, show notes for tags
 
 local function show_notes(tags)
-  local zk_api = require("zk.api")
-  local notebook = vim.env.ZK_NOTEBOOK_DIR or vim.fn.getcwd()
   local h = require("jk.headings")
   local tp = require("telescope.pickers")
   local tf = require("telescope.finders")
+  local sorters = require("telescope.sorters")
   local tconf = require("telescope.config").values
+  local jk_home = vim.env.JK_HOME or vim.fn.stdpath("config")
+  local script = jk_home .. "/bin/search-rag"
 
-  zk_api.list(notebook, {
-    tags = tags,
-    select = { "title", "path", "rawContent" },
-    sort = { "title" },
-  }, function(err, notes)
-    if err or not notes then return end
-    local items = {}
-    for _, n in ipairs(notes) do
-      local title = n.title or vim.fn.fnamemodify(n.path, ":t:r")
-      local added = false
-      if n.rawContent then
-        for _, tag_name in ipairs(tags) do
-          local sections = h.sections_for(n.rawContent, "#" .. tag_name)
-          for _, s in ipairs(sections) do
-            items[#items + 1] = {
-              display = h.label(title, s.text),
-              path = n.path,
-              lnum = s.lnum,
-            }
-            added = true
-          end
-        end
-      end
-      if not added then
-        items[#items + 1] = { display = title, path = n.path, lnum = 1 }
-      end
+  local tag_prefix = table.concat(
+    vim.tbl_map(function(t) return "#" .. t end, tags),
+    " "
+  )
+
+  local function entry_maker(line)
+    local score, file, lnum, heading, title, linked_from =
+      line:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
+    if not score then return nil end
+    lnum = tonumber(lnum) or 1
+    local label = h.label(
+      title ~= "" and title or heading,
+      title ~= "" and heading or nil
+    )
+    if linked_from and linked_from ~= "" then
+      label = label .. " (via " .. linked_from .. ")"
     end
-    vim.schedule(function()
-      tp.new({}, {
-        prompt_title = "Notes tagged #" .. table.concat(tags, ", #"),
-        finder = tf.new_table({
-          results = items,
-          entry_maker = function(item)
-            return {
-              value = item,
-              display = item.display,
-              ordinal = item.display,
-              filename = notebook .. "/" .. item.path,
-              lnum = item.lnum,
-            }
-          end,
-        }),
-        sorter = tconf.generic_sorter({}),
-        previewer = tconf.grep_previewer({}),
-      }):find()
-    end)
-  end)
+    return {
+      value = file,
+      display = label,
+      ordinal = label,
+      filename = file,
+      lnum = lnum,
+    }
+  end
+
+  tp.new({}, {
+    prompt_title = "Notes tagged #" .. table.concat(tags, ", #"),
+    finder = tf.new_job(function(prompt)
+      local query = tag_prefix
+      if prompt and prompt ~= "" then
+        query = tag_prefix .. " " .. prompt
+      end
+      return { script, query }
+    end, entry_maker),
+    previewer = tconf.grep_previewer({}),
+    sorter = sorters.highlighter_only({}),
+  }):find()
 end
 
 local function browse_tags()
