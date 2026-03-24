@@ -88,6 +88,14 @@ jk init
 jk --gui
 ```
 
+## Tag search
+
+`<space>t` opens a tag browser. Select a tag to see every section where it appears — if the tag is in frontmatter, you see the note title; if it's inline under a heading, you see `Note > Section`. Start typing to do a full-text search scoped to tagged files, with prefix matching as you type.
+
+Tags work at section granularity. A single note can have different tags on different headings, and each shows up independently in the picker.
+
+<!-- TODO: demo video -->
+
 ## Semantic search
 
 Requires Ollama running locally with the `nomic-embed-text` model:
