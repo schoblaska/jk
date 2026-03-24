@@ -1,0 +1,5 @@
+{
+  "name": "jk-notebook",
+  "description": "Skill for reading, searching, and writing notes in a jk notebook via the jk MCP server",
+  "version": "1.0.0"
+}

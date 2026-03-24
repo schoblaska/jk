@@ -1,0 +1,16 @@
+{
+  "name": "jk-plugins",
+  "owner": {
+    "name": "Joseph Schoblaska"
+  },
+  "metadata": {
+    "description": "Plugins for jk notebook users"
+  },
+  "plugins": [
+    {
+      "name": "jk-notebook",
+      "source": "./plugins/jk-notebook",
+      "description": "Skill for reading, searching, and writing notes in a jk notebook via the jk MCP server"
+    }
+  ]
+}
