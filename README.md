@@ -94,7 +94,7 @@ jk --gui
 
 Tags work at section granularity. A single note can have different tags on different headings, and each shows up independently in the picker.
 
-<video src="https://gist.github.com/schoblaska/c252e3e7dee25e64b2be2cf589dc59fc/raw/537141ac2e4a713078a014f526ef2cfd7c7b0236/Screen%2520Recording%25202026-03-24%2520at%25206.17.59%25E2%2580%25AFPM.mov" controls></video>
+https://github.com/user-attachments/assets/1cbe73de-664d-496c-8092-442fda222254
 
 ## Semantic search
 
