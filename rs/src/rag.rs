@@ -428,17 +428,6 @@ fn search_single_query(
         }
     }
 
-    // Filter candidates to chunks that actually contain at least one queried tag
-    if !parsed.tags.is_empty() {
-        candidates.retain(|_, c| {
-            let text_lower = c.text.to_lowercase();
-            parsed
-                .tags
-                .iter()
-                .any(|tag| text_lower.contains(&format!("#{}", tag)))
-        });
-    }
-
     // Score all candidates
     let mut scored: Vec<RagResult> = candidates
         .into_values()

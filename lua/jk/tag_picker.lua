@@ -9,13 +9,6 @@ local function show_notes(tags)
   local tf = require("telescope.finders")
   local sorters = require("telescope.sorters")
   local tconf = require("telescope.config").values
-  local jk_home = vim.env.JK_HOME or vim.fn.stdpath("config")
-  local script = jk_home .. "/bin/search-rag"
-
-  local tag_prefix = table.concat(
-    vim.tbl_map(function(t) return "#" .. t end, tags),
-    " "
-  )
 
   local function entry_maker(line)
     local score, file, lnum, heading, title, linked_from =
@@ -52,18 +45,38 @@ local function show_notes(tags)
     end, tags),
     " OR "
   ) .. ")"
-  local sql = string.format(
+
+  -- Empty prompt: show only tagged sections
+  local browse_sql = string.format(
     "SELECT '1.000' || char(9) || c.file || char(9) || MIN(c.line) || char(9) || c.heading || char(9) || f.title || char(9) || '' FROM chunks c JOIN files f ON c.file = f.path WHERE %s AND %s GROUP BY c.file, c.heading ORDER BY f.title, MIN(c.line)",
     tag_where, chunk_tag_where
   )
+
+  -- Search: FTS within tagged files (no semantic threshold to miss heading matches)
+  local function search_sql(prompt)
+    local terms = {}
+    for word in prompt:gmatch("%S+") do
+      for part in word:gmatch("%w+") do
+        terms[#terms + 1] = part .. "*"
+      end
+    end
+    if #terms == 0 then return nil end
+    local fts = table.concat(terms, " ")
+    return string.format(
+      "SELECT printf('%%.3f', -bm25(chunks_fts, 5.0, 2.0, 1.0)) || char(9) || c.file || char(9) || c.line || char(9) || c.heading || char(9) || f.title || char(9) || '' FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid JOIN files f ON c.file = f.path WHERE chunks_fts MATCH '%s' AND %s ORDER BY bm25(chunks_fts, 5.0, 2.0, 1.0) LIMIT 50",
+      fts, tag_where
+    )
+  end
 
   tp.new({}, {
     prompt_title = "Notes tagged #" .. table.concat(tags, ", #"),
     finder = tf.new_job(function(prompt)
       if not prompt or prompt == "" then
-        return { "sqlite3", "-separator", "\t", db, sql }
+        return { "sqlite3", "-separator", "\t", db, browse_sql }
       end
-      return { script, tag_prefix .. " " .. prompt }
+      local fts_sql = search_sql(prompt)
+      if not fts_sql then return nil end
+      return { "sqlite3", "-separator", "\t", db, fts_sql }
     end, entry_maker),
     previewer = tconf.grep_previewer({}),
     sorter = sorters.highlighter_only({}),
