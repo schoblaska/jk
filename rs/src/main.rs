@@ -27,11 +27,24 @@ fn main() {
             search::run(&notebook_dir, &query);
         }
         "rag-search" => {
-            let query = args[2..].join(" ");
-            const SCORE_THRESHOLD: f64 = 0.35;
+            let mut min_score: f64 = 0.35;
+            let mut query_args: Vec<&str> = Vec::new();
+            let mut i = 2;
+            while i < args.len() {
+                if args[i] == "--min-score" {
+                    if let Some(val) = args.get(i + 1) {
+                        min_score = val.parse().unwrap_or(0.35);
+                        i += 2;
+                        continue;
+                    }
+                }
+                query_args.push(&args[i]);
+                i += 1;
+            }
+            let query = query_args.join(" ");
             match rag::search(&notebook_dir, &query, usize::MAX, true, true) {
                 Ok((results, _)) => {
-                    for r in results.iter().take_while(|r| r.score >= SCORE_THRESHOLD) {
+                    for r in results.iter().take_while(|r| r.score >= min_score) {
                         let linked = r.linked_from.as_deref().unwrap_or("");
                         println!(
                             "{:.3}\t{}\t{}\t{}\t{}\t{}",

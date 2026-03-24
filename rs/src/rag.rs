@@ -5,8 +5,8 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
-const W_SEMANTIC: f64 = 0.45;
-const W_FTS: f64 = 0.20;
+const W_SEMANTIC: f64 = 0.30;
+const W_FTS: f64 = 0.35;
 const W_SUBSTR: f64 = 0.10;
 const W_TAG: f64 = 0.10;
 const W_LINKS: f64 = 0.10;
@@ -441,12 +441,30 @@ fn search_single_query(
                 .map(|m| recency_score(m.date.as_deref(), m.is_journal))
                 .unwrap_or(0.0);
 
+            // Heading-match boost: if search terms appear in the heading, big signal
+            let heading_boost = if !parsed.text.is_empty() {
+                let heading_lower = c.heading.to_lowercase();
+                let matched = parsed
+                    .text
+                    .split_whitespace()
+                    .filter(|w| heading_lower.contains(&w.to_lowercase()))
+                    .count();
+                if matched > 0 {
+                    0.15 * (matched as f64 / parsed.text.split_whitespace().count() as f64)
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            };
+
             let score = w_sem * c.semantic_score
                 + w_fts * c.fts_score
                 + w_substr * c.substr_score
                 + w_tag * tb
                 + w_links * lb
-                + w_rec * rb;
+                + w_rec * rb
+                + heading_boost;
 
             let tags = meta.map(|m| m.tags.clone()).unwrap_or_default();
             let date = meta.and_then(|m| m.date.clone());

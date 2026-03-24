@@ -52,7 +52,7 @@ local function show_notes(tags)
     tag_where, chunk_tag_where
   )
 
-  -- Search: FTS within tagged files (no semantic threshold to miss heading matches)
+  -- Search: FTS within tagged files with prefix matching
   local function search_sql(prompt)
     local terms = {}
     for word in prompt:gmatch("%S+") do
