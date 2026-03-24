@@ -27,7 +27,7 @@ jk is a personal knowledge base built on [zk](https://github.com/zk-org/zk) — 
 
 ## Note format
 
-Every note starts with a markdown heading followed by optional faux-frontmatter lines — plain `key: value` lines immediately after the `#` heading, before any body content. These are **not** YAML frontmatter (no `---` fences). They are parsed by zk for metadata.
+Every note starts with a markdown heading followed by optional faux-frontmatter lines — plain `key: value` lines immediately after the `#` heading, before any body content. These are **not** YAML frontmatter (no `---` fences). They are parsed by zk for metadata. Section headings (`##`) can also have faux-frontmatter (most commonly `tags:`).
 
 ### Required fields
 
@@ -44,10 +44,8 @@ These appear on lines immediately after the heading + date, before any blank lin
 
 - `tags:` — space-separated `#hashtags`. e.g. `tags: #person`, `tags: #project, #ai-generated`
 - `description:` — one-line summary (used in search results)
-- `role:` — for `#person` notes. e.g. `role: CEO`
-- `people:` — for `#project` notes. Comma-separated markdown links to person notes. e.g. `people: [Name](sha), [Name](sha)`
 
-There is no fixed set of keys — the user may use any `key: value` line. When editing existing notes, preserve all faux-frontmatter lines you find. When creating new notes, only add fields that are relevant.
+Other `key: value` lines may be used with discretion. When editing existing notes, preserve all faux-frontmatter lines you find.
 
 ### AI notes (`ai/`)
 
