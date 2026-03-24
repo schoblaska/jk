@@ -22,6 +22,7 @@ local function show_notes(tags)
       line:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
     if not score then return nil end
     lnum = tonumber(lnum) or 1
+    heading = heading:gsub("^#+%s*", "")
     local label = h.label(
       title ~= "" and title or heading,
       title ~= "" and heading or nil
@@ -45,9 +46,15 @@ local function show_notes(tags)
     end, tags),
     " AND "
   )
+  local chunk_tag_where = "(" .. table.concat(
+    vim.tbl_map(function(t)
+      return "c.text LIKE '%#" .. t .. "%'"
+    end, tags),
+    " OR "
+  ) .. ")"
   local sql = string.format(
-    "SELECT '1.000' || char(9) || c.file || char(9) || c.line || char(9) || c.heading || char(9) || f.title || char(9) || '' FROM chunks c JOIN files f ON c.file = f.path WHERE %s ORDER BY f.title, c.line",
-    tag_where
+    "SELECT '1.000' || char(9) || c.file || char(9) || MIN(c.line) || char(9) || c.heading || char(9) || f.title || char(9) || '' FROM chunks c JOIN files f ON c.file = f.path WHERE %s AND %s GROUP BY c.file, c.heading ORDER BY f.title, MIN(c.line)",
+    tag_where, chunk_tag_where
   )
 
   tp.new({}, {
