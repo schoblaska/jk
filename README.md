@@ -71,7 +71,7 @@
 - [zk](https://github.com/zk-org/zk): `brew install zk`
 - [Ollama](https://ollama.com/) with `nomic-embed-text` for semantic search (optional)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) for the terminal split (optional)
-- [Neovide](https://neovide.dev/) for GUI with smooth scrolling and hover shadows
+- [Neovide](https://neovide.dev/) for GUI with smooth scrolling and hover shadows (optional)
 
 ## Install
 
