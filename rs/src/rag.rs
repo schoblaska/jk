@@ -627,7 +627,6 @@ fn expand_links(
 pub fn search(
     notebook_dir: &str,
     raw_query: &str,
-    limit: usize,
     do_expand_links: bool,
     strict_tags: bool,
 ) -> Result<(Vec<RagResult>, bool), String> {
@@ -732,12 +731,12 @@ pub fn search(
         final_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     }
 
-    final_results.truncate(limit);
     Ok((final_results, ollama_available))
 }
 
-/// Format results as markdown for LLM consumption.
-/// Deduplicates by file, reads full content, and includes link index.
+/// Format results as lightweight summaries for LLM consumption.
+/// Deduplicates by file, includes outline (H2 headings) and link index.
+/// Use read_note for full content.
 pub fn format_results(
     results: &[RagResult],
     raw_query: &str,
@@ -761,6 +760,9 @@ pub fn format_results(
     let mut seen_files: HashSet<String> = HashSet::new();
     let mut unique_results: Vec<&RagResult> = Vec::new();
     for r in results {
+        if r.file == "index.md" {
+            continue;
+        }
         if seen_files.insert(r.file.clone()) {
             unique_results.push(r);
         }
@@ -812,6 +814,26 @@ pub fn format_results(
         out.push_str(&meta_parts.join(" | "));
         out.push_str("\n\n");
 
+        // Outline (H2 headings from chunks)
+        if let Some(ref c) = conn {
+            if let Ok(mut stmt) = c.prepare("SELECT heading FROM chunks WHERE file = ?1 ORDER BY line") {
+                let headings: Vec<String> = stmt
+                    .query_map([&r.file], |row| row.get::<_, String>(0))
+                    .unwrap_or_else(|_| panic!("chunk query failed"))
+                    .filter_map(|r| r.ok())
+                    .filter(|h| h.starts_with("## ") && !h.starts_with("### "))
+                    .map(|h| h.trim_start_matches("## ").to_string())
+                    .collect();
+                if !headings.is_empty() {
+                    out.push_str("### Outline\n");
+                    for h in &headings {
+                        out.push_str(&format!("- {h}\n"));
+                    }
+                    out.push('\n');
+                }
+            }
+        }
+
         // Links index
         if let Some(ref c) = conn {
             let mut has_links = false;
@@ -822,6 +844,7 @@ pub fn format_results(
                     .query_map([&r.file], |row| row.get::<_, String>(0))
                     .unwrap_or_else(|_| panic!("link query failed"))
                     .filter_map(|r| r.ok())
+                    .filter(|dst| dst != "index.md")
                     .collect();
                 if !outgoing.is_empty() {
                     if !has_links {
@@ -845,6 +868,7 @@ pub fn format_results(
                     .query_map([&r.file], |row| row.get::<_, String>(0))
                     .unwrap_or_else(|_| panic!("link query failed"))
                     .filter_map(|r| r.ok())
+                    .filter(|src| src != "index.md")
                     .collect();
                 if !incoming.is_empty() {
                     if !has_links {
@@ -866,22 +890,6 @@ pub fn format_results(
                 out.push('\n');
             }
         }
-
-        // Full file content
-        let full_path = std::path::Path::new(notebook_dir).join(&r.file);
-        match std::fs::read_to_string(&full_path) {
-            Ok(content) => {
-                out.push_str("### Content\n");
-                out.push_str(&content);
-                if !content.ends_with('\n') {
-                    out.push('\n');
-                }
-            }
-            Err(e) => {
-                out.push_str(&format!("### Content\nError reading file: {e}\n"));
-            }
-        }
-        out.push('\n');
     }
 
     out

@@ -34,9 +34,12 @@ struct RagSearchParams {
     /// Search query. Use #tag tokens for tag boosting (e.g. "puglia #travel").
     /// Comma-separated queries run in parallel (e.g. "italian cooking, wine regions").
     query: String,
-    /// Maximum results to return (default: 15)
+    /// Minimum results to always return (default: 10)
     #[serde(default)]
-    limit: Option<usize>,
+    min: Option<usize>,
+    /// Score threshold (0.0–1.0). Return all results above this score, or at least `min` results, whichever is greater. (default: 0.15)
+    #[serde(default)]
+    threshold: Option<f64>,
     /// Include one-hop linked notes in results (default: true)
     #[serde(default)]
     expand_links: Option<bool>,
@@ -111,18 +114,27 @@ impl JkServer {
         Self { notebook_dir }
     }
 
-    #[tool(description = "Hybrid RAG search over notes. Combines semantic similarity, fulltext (BM25), tag boosting, and recency signals into a single ranked result set with excerpts. Use #tag tokens in the query to boost notes with matching tags. Comma-separated queries run in parallel and merge results. Returns markdown with scored results, metadata, and excerpts.")]
+    #[tool(description = "Hybrid RAG search over notes. Returns lightweight summaries (title, date, tags, outline, links) — not full content. Use read_note to drill into specific notes. Combines semantic similarity, fulltext (BM25), tag boosting, and recency signals. Use #tag tokens for tag boosting. Comma-separated queries run in parallel and merge results.")]
     async fn rag_search(
         &self,
         #[tool(aggr)] Parameters(params): Parameters<RagSearchParams>,
     ) -> Result<String, String> {
         let dir = self.notebook_dir.clone();
         let query = params.query;
-        let limit = params.limit.unwrap_or(20);
+        let min = params.min.unwrap_or(10);
+        let threshold = params.threshold.unwrap_or(0.15);
         let expand = params.expand_links.unwrap_or(true);
         tokio::task::spawn_blocking(move || {
-            let (results, ollama_available) = rag::search(&dir, &query, limit, expand, false)?;
-            Ok(rag::format_results(&results, &query, ollama_available, &dir))
+            let (results, ollama_available) = rag::search(&dir, &query, expand, false)?;
+            // Keep at least `min` results, plus any above threshold
+            let count = results
+                .iter()
+                .enumerate()
+                .take_while(|(i, r)| *i < min || r.score >= threshold)
+                .count()
+                .max(min.min(results.len()));
+            let results = &results[..count];
+            Ok(rag::format_results(results, &query, ollama_available, &dir))
         })
         .await
         .map_err(|e| e.to_string())?
@@ -553,7 +565,7 @@ impl ServerHandler for JkServer {
                 version: env!("CARGO_PKG_VERSION").into(),
             },
             instructions: Some(
-                "jk notebook tools: rag_search, read_note, edit_note, patch_note, create_note, list_notes, list_tags, reindex, recent_journals, append_ai_journal".into(),
+                "jk notebook tools. Two-step search: rag_search returns summaries (title, tags, outline, links), then read_note fetches full content for specific notes. Also: edit_note, patch_note, create_note, list_notes, list_tags, reindex, recent_journals, append_ai_journal".into(),
             ),
         }
     }

@@ -42,7 +42,7 @@ fn main() {
                 i += 1;
             }
             let query = query_args.join(" ");
-            match rag::search(&notebook_dir, &query, usize::MAX, true, true) {
+            match rag::search(&notebook_dir, &query, true, true) {
                 Ok((results, _)) => {
                     for r in results.iter().take_while(|r| r.score >= min_score) {
                         let linked = r.linked_from.as_deref().unwrap_or("");

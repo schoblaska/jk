@@ -16,7 +16,7 @@ Run each step in order. Report pass/fail for each and include any error output.
 
 ## 4. rag_search — basic query
 - Call `rag_search` with query `"notes"` (or any word likely to appear in the demo wiki)
-- Expect: markdown output with scored results, file paths, excerpts
+- Expect: markdown output with scored results, file paths, outlines (H2 headings), and links — no full file content
 
 ## 5. rag_search — tag boosting
 - Pick a tag from step 3. Call `rag_search` with query `"#<that-tag>"`
@@ -26,7 +26,22 @@ Run each step in order. Report pass/fail for each and include any error output.
 - Call `rag_search` with a comma-separated query, e.g. `"first topic, second topic"`
 - Expect: merged results from both queries
 
-## 7. read_note — single
+## 7. rag_search — min/threshold behavior
+- Call `rag_search` with a broad query and `min: 5, threshold: 0.99`
+- Expect: at least 5 results returned (min floor), even though most are below threshold
+- Call `rag_search` with a broad query and `min: 1, threshold: 0.01`
+- Expect: many results (all above the low threshold)
+
+## 8. rag_search + read_note — two-step drill-down
+- Call `rag_search` with a query. Verify results contain outlines and links but NOT full note content.
+- Pick a path from the results. Call `read_note` with that path.
+- Expect: full markdown content returned by read_note
+
+## 9. rag_search — index.md excluded
+- Call `rag_search` with a broad query
+- Expect: index.md does not appear in results or link lists
+
+## 9. read_note — single
 - Pick a path from step 4 results. Call `read_note` with `paths: ["<that-path>"]`
 - Expect: full markdown content of the note
 
