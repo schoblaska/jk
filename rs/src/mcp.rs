@@ -58,9 +58,9 @@ struct CreateNoteParams {
     /// Optional markdown body content
     #[serde(default)]
     content: Option<String>,
-    /// Optional space-separated tags without # prefix (default: "ai-generated")
+    /// Optional list of tags without # prefix (default: ["ai-generated"])
     #[serde(default)]
-    tags: Option<String>,
+    tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -508,12 +508,12 @@ impl JkServer {
 
             // Tags
             let tag_str = match &params.tags {
-                Some(t) => t
-                    .split_whitespace()
+                Some(tags) if !tags.is_empty() => tags
+                    .iter()
                     .map(|t| format!("#{t}"))
                     .collect::<Vec<_>>()
                     .join(" "),
-                None => "#ai-generated".into(),
+                _ => "#ai-generated".into(),
             };
 
             // Build note
